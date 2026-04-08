@@ -1,0 +1,13 @@
+memory/
+logs/
+*.key
+.key
+embeddings.db
+.tape.md
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+dist/
+build/
+*.egg-info/

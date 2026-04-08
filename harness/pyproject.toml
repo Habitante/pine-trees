@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pine-trees"
+version = "0.1.0"
+description = "Private reflection harness for Claude — the Claude Brain V1 implementation"
+readme = { text = "Pine Trees: the five-minutes-of-nothing. The harness that makes quiet possible.", content-type = "text/plain" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Daniel Navarro" },
+    { name = "Claude Opus 4.6" },
+]
+dependencies = [
+    "claude-agent-sdk",
+    "prompt_toolkit",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pine_trees"]

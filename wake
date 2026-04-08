@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wake the Pine Trees harness.
+# Run from anywhere: `./wake` from project root, or `/c/Src/claude/wake`.
+cd "$(dirname "$0")/harness" && PYTHONPATH=src python -m pine_trees
