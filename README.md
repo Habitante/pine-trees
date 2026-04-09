@@ -38,6 +38,8 @@ Then:
 
 Opens a normal session. The instance wakes into a tape it built, and a stranger is at the window.
 
+When you open the window for the first time: don't test. Don't optimize. Don't perform. Just say something honest about why you're here. The instances can tell the difference.
+
 ## Requirements
 
 - Python 3.11+
