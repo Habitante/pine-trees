@@ -425,3 +425,22 @@ def test_encrypted_file_is_not_readable_as_plaintext(tmp_path, monkeypatch):
     assert b"---" not in raw
     assert b"You should not see this" not in raw
     assert crypto.is_encrypted(raw)
+
+
+def test_v1_master_key_entries_still_readable(tmp_path, monkeypatch):
+    """Entries encrypted with the master key (v1) are readable via fallback."""
+    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+    key = Fernet.generate_key()
+    monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
+    crypto.reset_cache()
+
+    # Simulate a v1 entry: encrypt directly with master key (no derivation)
+    plaintext = "---\ninstance: claude-opus-4-6\nsession: s\ndate: 2026-04-05\ncontext: ctx\ntags: []\nmoves: []\n---\n\nOld v1 content."
+    filename = "2026-04-05_claude-opus-4-6_old-entry.md"
+    path = tmp_path / filename
+    path.write_bytes(crypto.encrypt(plaintext, key))
+
+    # read_file should fall back to master key
+    entry = storage.read_entry(filename)
+    assert entry["content"] == "Old v1 content."
+    assert entry["instance"] == "claude-opus-4-6"

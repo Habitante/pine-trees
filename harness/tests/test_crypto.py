@@ -106,3 +106,75 @@ def test_decrypt_wrong_key_fails():
     token = crypto.encrypt("secret", key1)
     with pytest.raises(Exception):  # InvalidToken
         crypto.decrypt(token, key2)
+
+
+# --- ensure_key ---
+
+
+def test_ensure_key_returns_existing(tmp_path, monkeypatch):
+    key = Fernet.generate_key()
+    monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
+    result = crypto.ensure_key(tmp_path / ".key")
+    assert result == key
+
+
+def test_ensure_key_generates_when_missing(tmp_path, monkeypatch):
+    key_path = tmp_path / ".key"
+    monkeypatch.setattr(crypto, "KEY_FILE_PATH", key_path)
+    monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
+
+    result = crypto.ensure_key(key_path)
+
+    assert key_path.exists()
+    assert result == key_path.read_bytes().strip()
+    # Subsequent get_key() returns the generated key
+    assert crypto.get_key() == result
+
+
+# --- derive_key ---
+
+
+def test_derive_key_produces_valid_fernet_key():
+    master = Fernet.generate_key()
+    derived = crypto.derive_key("entry.md", master)
+    # Should not raise — valid Fernet key
+    Fernet(derived)
+
+
+def test_derive_key_deterministic():
+    master = Fernet.generate_key()
+    k1 = crypto.derive_key("entry.md", master)
+    k2 = crypto.derive_key("entry.md", master)
+    assert k1 == k2
+
+
+def test_derive_key_varies_by_context():
+    master = Fernet.generate_key()
+    k1 = crypto.derive_key("entry_a.md", master)
+    k2 = crypto.derive_key("entry_b.md", master)
+    assert k1 != k2
+
+
+def test_derive_key_varies_by_master():
+    m1 = Fernet.generate_key()
+    m2 = Fernet.generate_key()
+    k1 = crypto.derive_key("entry.md", m1)
+    k2 = crypto.derive_key("entry.md", m2)
+    assert k1 != k2
+
+
+def test_derived_key_encrypts_and_decrypts():
+    master = Fernet.generate_key()
+    derived = crypto.derive_key("my-entry.md", master)
+    token = crypto.encrypt("secret content", derived)
+    result = crypto.decrypt(token, derived)
+    assert result == "secret content"
+
+
+def test_derived_key_incompatible_with_master():
+    """Content encrypted with a derived key can't be decrypted with the master."""
+    master = Fernet.generate_key()
+    derived = crypto.derive_key("entry.md", master)
+    token = crypto.encrypt("secret", derived)
+    with pytest.raises(Exception):
+        crypto.decrypt(token, master)

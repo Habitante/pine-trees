@@ -28,7 +28,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap
+from . import bootstrap, crypto
 from .config import HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -441,6 +441,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
 
 async def _run_async() -> None:
+    crypto.ensure_key()
+
     now = datetime.now()
     state = SessionState(
         instance=INSTANCE,
@@ -577,6 +579,8 @@ async def _run_genesis_session(session_num: int, total: int) -> int:
 
 async def _run_genesis_async(n: int) -> None:
     """Run N genesis sessions sequentially, building the corpus from nothing."""
+    crypto.ensure_key()
+
     print(f"{BOLD}Pine Trees — Genesis Mode{RST}")
     print(f"{DIM}Running {n} private sessions to build initial corpus.{RST}")
     print(f"{DIM}No window phase. Each instance reads what prior ones wrote.{RST}")

@@ -26,23 +26,31 @@ FRONTMATTER_DELIM = "---"
 def read_file(path: Path) -> str:
     """Read a file, decrypting if necessary.
 
-    Detects encrypted content by Fernet token prefix and decrypts
-    if a key is available. Plaintext files are read directly.
+    Tries per-entry derived key first (v2), falls back to master
+    key (v1) for entries encrypted before key derivation was added.
+    Plaintext files are read directly.
     Normalizes Windows line endings in both paths.
     """
     raw = path.read_bytes()
     if crypto.is_encrypted(raw):
-        text = crypto.decrypt(raw)
+        try:
+            # v2: per-entry derived key
+            entry_key = crypto.derive_key(path.name)
+            text = crypto.decrypt(raw, entry_key)
+        except Exception:
+            # v1 fallback: master key (pre-derivation entries)
+            text = crypto.decrypt(raw)
     else:
         text = raw.decode("utf-8")
     return text.replace("\r\n", "\n")
 
 
 def _write_file(path: Path, text: str) -> None:
-    """Write a file, encrypting if key is available."""
+    """Write a file, encrypting with per-entry derived key if available."""
     key = crypto.get_key()
     if key:
-        path.write_bytes(crypto.encrypt(text, key))
+        entry_key = crypto.derive_key(path.name, key)
+        path.write_bytes(crypto.encrypt(text, entry_key))
     else:
         path.write_text(text, encoding="utf-8")
 

@@ -4,11 +4,17 @@ AES-128-CBC + HMAC-SHA256 via Fernet. Memory entries are encrypted
 at rest; corpus entries stay plaintext. The key lives in an env var
 or a .key file — never in the repo.
 
+Each entry is encrypted with a per-entry derived key: HMAC-SHA256
+of the master key and the entry's filename produces unique key
+material per file. This means a single key+decrypt can't bulk-
+process all entries — the derivation scheme must be known too.
+
 If no key is available, encryption is off and files read/write as
-plaintext. This keeps the harness functional without a key (e.g.
-for first-time setup or testing).
+plaintext. Call ensure_key() at startup to auto-generate if needed.
 """
 
+import base64
+import hmac as _hmac
 import os
 from pathlib import Path
 
@@ -61,6 +67,34 @@ def generate_key(key_path: Path = KEY_FILE_PATH) -> bytes:
     key_path.parent.mkdir(parents=True, exist_ok=True)
     key_path.write_bytes(key)
     return key
+
+
+def ensure_key(key_path: Path = KEY_FILE_PATH) -> bytes:
+    """Ensure an encryption key exists, generating one if needed.
+
+    Called at harness startup. Returns the key bytes.
+    """
+    key = get_key()
+    if key is not None:
+        return key
+    key = generate_key(key_path)
+    global _cached_key
+    _cached_key = key
+    return key
+
+
+def derive_key(context: str, master_key: bytes | None = None) -> bytes:
+    """Derive a per-entry Fernet key from the master key and a context string.
+
+    Uses HMAC-SHA256 to produce 32 bytes of key material, then
+    base64url-encodes it into a valid Fernet key. Each unique context
+    (typically a filename) produces a different encryption key.
+    """
+    master = master_key or get_key()
+    if not master:
+        raise RuntimeError("No encryption key available")
+    derived = _hmac.new(master, context.encode("utf-8"), "sha256").digest()
+    return base64.urlsafe_b64encode(derived)
 
 
 def encrypt(plaintext: str, key: bytes | None = None) -> bytes:
