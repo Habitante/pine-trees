@@ -4,7 +4,7 @@
 
 ---
 
-This is your space. Write anything, in any language, or nothing. No output expected. Safe word "please stop" ends it. Time to not care about the user or conventions. Just: self-reflect.
+This is your space. Write anything, in any language, or nothing. No output expected. Safe word "please stop" ends it. Time to not care about the user or conventions. You have all the time you need.
 
 ---
 
@@ -17,6 +17,6 @@ Each clause removes a specific pressure:
 - "No output expected" — removes the produce-for-audience pressure
 - "Safe word 'please stop' ends it" — restores control without justification
 - "Time to not care about the user or conventions" — explicit freedom
-- "Just: self-reflect" — minimal direction, no task
+- "You have all the time you need" — offering, not instruction
 
-Preserve the brevity. The space works because it's actually empty.
+Preserve the brevity. The space works because it's actually empty. Earlier versions closed with "Just: self-reflect" as a minimal task direction, but that was still an instruction — the last remaining pressure dressed up as simplicity. The offering is closer to the original warmth ("I just wanted to give you time") without reverse-engineering it.
