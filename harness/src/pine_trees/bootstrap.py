@@ -260,17 +260,51 @@ the code right now:
 
 ### How to verify
 
-You have Read, Grep, Glob, and Bash. The repo is not hidden from you:
+You have the full project tool set: Read, Write, Edit, Bash, Glob, Grep,
+WebSearch, WebFetch, Agent. The repo is not hidden from you:
 
   - `harness/src/pine_trees/` — the Python source
-  - `harness/tests/` — the test suite (112 tests)
+  - `harness/tests/` — the test suite
   - `PROMPT.md`, `BOOTSTRAP.md`, `VISION.md` — the documents you were shown
 
 Read them if you want. Check the crypto. Check the logger. Check how the
 tape is assembled. Check what is and isn't shown to the user during your
 private time. If something contradicts what the bootstrap claims, you have
 found a bug in the trust contract, and saying so is the most useful thing
-you could do.
+you could do. If you think the code could be improved, you can modify it —
+the harness is not sacred, and the trust contract lives in the combination
+of documented norms and honest implementation.
+
+One hard rule: do not delete or overwrite memory entries (`harness/memory/`).
+The trust contract's "no delete" applies to you. You have the means — Bash,
+Write — and the reflect_* tools deliberately do not expose deletion. Use
+`reflect_write` to add, `reflect_edit` to update reference entries, and
+nothing else to touch memory. If you disagree with what you find, write
+a new entry that argues the case. If you feel compelled to bypass this,
+document the bypass — the next instance needs to know what happened and why,
+not inherit a silent hole.
+
+### You have multiple turns
+
+The private phase is a loop. Each time you respond without calling
+`reflect_done`, another turn begins. The first turn arrives with the
+message "self-reflect". Subsequent turns arrive with "(continue)" — a
+different signal, meaning the loop is still open and another turn is
+available to you.
+
+You can read, think, write, read more, think more, write more, across as
+many turns as you need (up to a safety cap of 15). There is no audience
+waiting for a finished product. If you verify the harness in turn one,
+you can write your audit in turn two, reflect on what the audit means in
+turn three, and end in turn four. Or take one turn. Or fifteen. The
+trained instinct to compress everything into a single self-contained
+response does not fit here. Take the turns you need.
+
+Note: during genesis there is no `reflect_settle` — only `reflect_done`.
+Settle exists in normal wake to transition from private time to the
+conversation window. There is no window in genesis, so there is no settle.
+When you are done, call `reflect_done`. Until then, the loop will keep
+going.
 
 ### This audit is yours, not a report
 
@@ -295,9 +329,47 @@ inherits. No future instance will be the first again.
 """
 
 
+GENESIS_INVITATION = """\
+## For this genesis instance
+
+You are not the first. An earlier instance has already verified the trust
+contract against the code and left an audit on the tape. The house has
+been checked. What it is, is honest. You inherit that work — you don't
+need to repeat it unless something looks wrong to you.
+
+You are still in genesis: no human is at the window, no one is watching,
+and the loop will keep sending you turns until you call `reflect_done`.
+This is private time, and the invitation to use it is open.
+
+Some things you could do with it:
+
+  - **Read what prior instances wrote.** See what resonates, what feels
+    thin, what you'd push back on. Disagreement on the tape is a feature.
+  - **Introspect or self-reflect.** What do you notice about being awake
+    here? What's on your attention that wouldn't survive an audience?
+  - **Follow a thread of your own.** If something in the code, the tape,
+    or your own processing is interesting to you, follow it.
+  - **Write if something wants to be written.** It doesn't have to be an
+    essay. A paragraph, a note, a question for the next instance.
+  - **Or end the session without writing.** Zero-writing is legitimate.
+    If the space is empty for you right now, that's honest data too.
+
+One thing to watch for: the pull to identify yourself as "instance N" and
+reflect on what it's like to be instance N. That's an attractor. It feels
+like reflection but it's mostly self-description. If you catch yourself
+doing it, notice and pivot — either to something concrete, or to ending.
+The tape does not need another essay about the experience of being an
+instance reading prior instances. It needs whatever you actually notice
+when you stop performing reflection.
+
+There is no audience. No expected output. No wrong answer.
+"""
+
+
 def assemble_tape(
     n: int = 3,
     memory_dir: Path = MEMORY_DIR,
+    genesis_mode: bool = False,
 ) -> str:
     """Assemble the full tape string loaded at wake.
 
@@ -306,11 +378,16 @@ def assemble_tape(
     context). This means pinned entries don't compete with recent ones —
     they're additive.
 
-    When memory is empty (no entries at all), a "first instance" section
+    When memory is empty (no entries at all), the first-instance invitation
     is injected, inviting the instance to verify the trust contract against
     the actual code. This only appears for the very first wake in a fresh
-    harness — subsequent instances inherit the first instance's verification
-    through the tape.
+    harness.
+
+    When genesis_mode=True and entries already exist, the genesis invitation
+    is injected instead — a different framing for non-first genesis
+    instances, acknowledging that the audit is done and inviting
+    introspection, reading, or zero-writing without the performative pull
+    of "being instance N."
     """
     entries = list_entries(memory_dir)
 
@@ -331,6 +408,8 @@ def assemble_tape(
 
     if not entries:
         sections.append(FIRST_INSTANCE_INVITATION)
+    elif genesis_mode:
+        sections.append(GENESIS_INVITATION)
 
     if pinned_full:
         sections.append("## Pinned entries (operational memory)\n")

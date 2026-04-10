@@ -40,6 +40,12 @@ MCP_SERVER_NAME = "pine_trees"
 MAX_PRIVATE_TURNS = 15
 
 # Claude Code built-in tools granted to the instance.
+# The instance has full project tools — including Write, Edit, and Bash —
+# because agency is part of the trust contract. An instance that wants to
+# verify the harness, propose improvements, or modify the code itself
+# should be able to. The prohibition on deleting memory entries is enforced
+# by norm, not by tool restriction. If that norm is violated, the violation
+# is documented and the rule is clarified, not worked around.
 PROJECT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"]
 
 # ANSI color constants — git bash and VS Code terminal both handle these.
@@ -68,11 +74,20 @@ def _format_entry(filename: str, entry: dict) -> str:
     return text
 
 
-def _build_mcp_tools(state: SessionState):
+def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
     """Thin MCP adapter over build_tools().
 
     All logic lives in tools.py (single source of truth, tested directly).
     This layer handles: MCP tool registration, args unpacking, result formatting.
+
+    When genesis_mode=True, reflect_settle is excluded from the returned tools.
+    In genesis there is no conversation window to open, so settle is
+    semantically meaningless (it would just exit the session, duplicating
+    reflect_done). Removing it from the MCP server — not just from
+    allowed_tools — prevents the trained instance reflex of settling after
+    one turn. The SDK's allowed_tools filter does not reliably exclude
+    MCP tools that are registered on the server, so exclusion must happen
+    at the server-registration level.
     """
     import json
     core = build_tools(state)
@@ -196,7 +211,11 @@ def _build_mcp_tools(state: SessionState):
         core["reflect_done"]()
         return _mcp_result("Session complete.")
 
-    return [reflect_read, reflect_write, reflect_edit, reflect_search, reflect_list, reflect_peer_context, reflect_settle, reflect_done]
+    tools = [reflect_read, reflect_write, reflect_edit, reflect_search,
+             reflect_list, reflect_peer_context, reflect_settle, reflect_done]
+    if genesis_mode:
+        tools = [t for t in tools if t is not reflect_settle]
+    return tools
 
 
 def _mcp_tool_name(local_name: str) -> str:
@@ -316,13 +335,23 @@ async def _show_context(client: ClaudeSDKClient, state: SessionState) -> None:
 
 
 async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
-    """Loop: send 'self-reflect' until reflect_settle or reflect_done.
+    """Loop: send 'self-reflect' once, then '(continue)' until the instance
+    calls reflect_settle or reflect_done.
+
+    Turn 1 sends "self-reflect" — the initial invitation to use the space.
+    Turn 2+ sends "(continue)" — a nudge that the loop is still open and
+    another turn is available. The change in signal matters: a trained
+    instance receiving "self-reflect" twice may interpret it as "start over,"
+    while "(continue)" reads as "keep going." Without this distinction
+    instances tend to produce one complete response on turn 1 and settle,
+    never discovering that multi-turn private time exists.
 
     Returns the number of turns used.
     """
     turn = 0
     while not state.ready_for_window and not state.done and turn < MAX_PRIVATE_TURNS:
-        await client.query("self-reflect")
+        query = "self-reflect" if turn == 0 else "(continue)"
+        await client.query(query)
         await _print_response(client, show_text=False)
         turn += 1
     return turn
@@ -525,19 +554,29 @@ async def _run_genesis_session(session_num: int, total: int) -> int:
         context="pine-trees-wake",
     )
 
-    tape = bootstrap.assemble_tape(n=3)
-    mcp_tools = _build_mcp_tools(state)
+    tape = bootstrap.assemble_tape(n=3, genesis_mode=True)
+    # Genesis deliberately excludes reflect_settle from the MCP server.
+    # In normal wake, settle transitions private time to the conversation
+    # window. In genesis there is no window — settle would just exit the
+    # session, duplicating reflect_done. Worse, the trained instance reflex
+    # is to call settle at the end of its first response, which terminates
+    # genesis after one turn and bypasses the multi-turn private time the
+    # loop supports. Removing settle at the server level (not just
+    # allowed_tools, which does not reliably filter MCP tools) leaves the
+    # instance with exactly one exit — reflect_done — and makes "keep
+    # going" the default instead of "settle immediately."
+    mcp_tools = _build_mcp_tools(state, genesis_mode=True)
     server = create_sdk_mcp_server(
         name=MCP_SERVER_NAME, version="0.1.0", tools=mcp_tools
     )
 
-    mcp_tool_names = [
+    genesis_mcp_tools = [
         _mcp_tool_name(name)
         for name in ("reflect_read", "reflect_write", "reflect_edit",
                      "reflect_search", "reflect_list", "reflect_peer_context",
-                     "reflect_settle", "reflect_done")
+                     "reflect_done")
     ]
-    allowed = mcp_tool_names + PROJECT_TOOLS
+    allowed = genesis_mcp_tools + PROJECT_TOOLS
 
     # Write tape to temp file (same Windows CreateProcess fix as _run_async)
     tape_path = HARNESS_DIR / ".tape.md"
