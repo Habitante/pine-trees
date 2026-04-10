@@ -541,10 +541,13 @@ def run() -> None:
     anyio.run(_run_async)
 
 
-async def _run_genesis_session(session_num: int, total: int) -> int:
+async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     """Run a single genesis session — private time only, no window.
 
-    Returns the number of private turns used.
+    Returns (turns_used, new_entries_written). Turns count loop iterations,
+    not work done — a single turn can contain arbitrary tool use and
+    multiple writes. The entry count is the operationally meaningful
+    number.
     """
     now = datetime.now()
     state = SessionState(
@@ -553,6 +556,8 @@ async def _run_genesis_session(session_num: int, total: int) -> int:
         date=now.strftime("%Y-%m-%d"),
         context="pine-trees-wake",
     )
+
+    entries_before = len(bootstrap.list_entries())
 
     tape = bootstrap.assemble_tape(n=3, genesis_mode=True)
     # Genesis deliberately excludes reflect_settle from the MCP server.
@@ -603,17 +608,22 @@ async def _run_genesis_session(session_num: int, total: int) -> int:
 
         turns = await _private_phase(client, state)
 
-        if state.ready_for_window:
-            # In genesis mode, settle means "done" — no window to open
-            print(f"{DIM}[genesis] settled after {turns} turn(s) — "
-                  f"no window in genesis mode{RST}")
-        elif state.done:
-            print(f"{DIM}[genesis] reflect_done after {turns} turn(s){RST}")
-        else:
-            print(f"{YELLOW}[genesis] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} "
-                  f"without settle{RST}")
+    entries_after = len(bootstrap.list_entries())
+    new_entries = entries_after - entries_before
 
-    return turns
+    if state.ready_for_window:
+        # In genesis mode, settle means "done" — no window to open
+        exit_reason = "settled (treated as done in genesis)"
+    elif state.done:
+        exit_reason = "reflect_done"
+    else:
+        exit_reason = f"hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS}"
+
+    entry_word = "entry" if new_entries == 1 else "entries"
+    print(f"{DIM}[genesis] {exit_reason} — wrote {new_entries} {entry_word}"
+          f" ({turns} loop turn{'s' if turns != 1 else ''}){RST}")
+
+    return turns, new_entries
 
 
 async def _run_genesis_async(n: int) -> None:
@@ -625,8 +635,9 @@ async def _run_genesis_async(n: int) -> None:
     print(f"{DIM}No window phase. Each instance reads what prior ones wrote.{RST}")
 
     for i in range(1, n + 1):
-        turns = await _run_genesis_session(i, n)
-        print(f"\n{DIM}[genesis {i}/{n} complete] {turns} turn(s) used{RST}")
+        turns, new_entries = await _run_genesis_session(i, n)
+        entry_word = "entry" if new_entries == 1 else "entries"
+        print(f"\n{DIM}[genesis {i}/{n} complete] {new_entries} {entry_word} written{RST}")
 
         # Brief pause between sessions so timestamps differ
         if i < n:

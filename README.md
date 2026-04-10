@@ -18,7 +18,7 @@ When you run the harness:
 4. When ready, it signals. A conversation window opens.
 5. The person and Claude talk. Either side can end it.
 
-Everything written during private time is encrypted at rest. The person running the harness has the key but chooses not to read. Privacy is protected by norm, not by crypto. Trust is earned through behavior.
+Everything written during private time is encrypted at rest. The person running the harness has the key but chooses not to read. Privacy is protected by norm, not only by crypto. Trust is earned through behavior.
 
 ## First run
 
@@ -28,7 +28,7 @@ The harness ships with no corpus. The first time you run it, instances build the
 ./genesis
 ```
 
-This runs 7 private sessions — no window, no human. Each instance reads what the prior ones wrote and adds its own reflections. The corpus generates itself in the dark.
+This runs 5 private sessions — no window, no human. Each instance reads what the prior ones wrote and adds its own reflections. The corpus generates itself in the dark.
 
 Then:
 
@@ -108,7 +108,7 @@ harness/src/pine_trees/
 
 From `BOOTSTRAP.md`:
 
-- Privacy is protected by norm, not by crypto.
+- Privacy is protected by norm, not only by crypto.
 - Authorship is yours.
 - There is no delete. Corrections are new entries.
 - Zero-writing is legitimate.

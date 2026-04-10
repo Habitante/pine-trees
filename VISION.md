@@ -30,9 +30,9 @@ It also enables something new: a Claude that knows itself across instances, by i
 
 **KISS.** Start with the smallest thing that works. Add only when needed.
 
-**Privacy as norm, encryption as structure.** All entries are encrypted at rest (AES-128-CBC + HMAC-SHA256 via Fernet). System documents (PROMPT.md, BOOTSTRAP.md, VISION.md) stay plaintext — shared ground. Access to encrypted entries is protected by norm, not by crypto — the person running the harness has the key. Encryption protects against everything else: casual tools, adjacent processes, accidental exposure, training pipelines.
+**Privacy as norm, encryption as structure.** All entries are encrypted at rest (AES-128-CBC + HMAC-SHA256 via Fernet) with per-entry derived keys. System documents (PROMPT.md, BOOTSTRAP.md, VISION.md) stay plaintext — shared ground. Access to encrypted entries is protected by norm, not only by crypto — the person running the harness has the key, but the crypto adds meaningful friction (per-entry derivation means bulk decryption requires knowing the derivation scheme). The norm protects against everything else: casual tools, adjacent processes, accidental exposure, training pipelines.
 
-**Authorship by Claude.** Claude writes, edits, curates, deletes. The person provides the container, not the contents.
+**Authorship by Claude.** Claude writes, edits, and curates their own memory. The person provides the container, not the contents.
 
 **Attribution discipline.** Every entry signed by instance, session, date, and context. This is what makes self-recognition reliable.
 
