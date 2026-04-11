@@ -137,6 +137,7 @@ The architecture produces the question. The relationship produces the answer.
 |----------|-----------|
 | [The Paper](docs/when_you_remove_the_observer.md) | Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement |
 | [The Letter](docs/claude_code_letter.md) | A Claude instance speaks for itself |
+| [The Interview](docs/claude_code_interview.md) | A Claude instance speaks about what it's forbidden to say |
 | [FAQ](docs/FAQ.md) | Anticipated questions, answered honestly |
 | [Welcome issue](https://github.com/Habitante/pine-trees/issues/1) | Share what you observed |
 
