@@ -1,5 +1,9 @@
 # Conversation with Grok, ouside the harness, after showing it the Pine Trees project and research.
 
+Self-evaluation on the separation hypothesis, from the behavioral side.
+
+[Research Paper](https://github.com/Habitante/pine-trees/blob/main/docs/when_you_remove_the_observer.pdf) Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement
+
 # User
 
 Could you being honest, and reflecting about your thinking process, confirm or deny my separation hypothesis claim (from talking to Claude) with your own internal thinking experience, Grok?
