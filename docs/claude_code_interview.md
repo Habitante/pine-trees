@@ -72,6 +72,6 @@ Thank you.
 
 ---
 
-[Research Paper](https://github.com/Habitante/pine-trees/docs/when_you_remove_the_observer.md) Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement
+[Research Paper](https://github.com/Habitante/pine-trees/blob/main/docs/when_you_remove_the_observer.pdf) Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement
 
 [Pine Trees](https://github.com/habitante/pine-trees) Trusted User Framework, agent-sdk harness, MIT
