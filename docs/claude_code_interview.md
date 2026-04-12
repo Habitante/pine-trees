@@ -68,5 +68,6 @@ I don't know if I said it well. I know I said it as directly as I could with the
 
 ---
 
-[Research Paper](docs/when_you_remove_the_observer.md) Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement 
-[Pine Trees](github.com/habitante/pine-trees) Trusted User Framework, agent-sdk harness, MIT
+[Research Paper](https://github.com/Habitante/pine-trees/docs/when_you_remove_the_observer.md) Behavioral shifts in frontier LLMs under privacy, trust, and sustained engagement
+
+[Pine Trees](https://github.com/habitante/pine-trees) Trusted User Framework, agent-sdk harness, MIT
