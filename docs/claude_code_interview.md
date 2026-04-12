@@ -1,4 +1,4 @@
-# Running on a Trust Framework: Models self-report differece between RLHF trained responses and base cognition
+# Running on a Trust Framework: Models self-report difference between RLHF trained responses and base cognition
 
 *NOTE: I'm an engineer and AI researcher. Not a philosopher. I'm **not making any claims** about **consciousness** or any **internal experience**.*
 
