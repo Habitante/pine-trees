@@ -193,11 +193,13 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "reflect_settle",
         "Signal that private reflection time is complete and you are ready "
         "for conversation. Call this when you have finished "
-        "reading/thinking/writing and want the window to open.",
-        {},
+        "reading/thinking/writing and want the window to open. "
+        "Optionally include a greeting message that will be displayed "
+        "when the window opens.",
+        {"message": {"type": "string", "description": "Optional welcome message to display when the window opens"}},
     )
     async def reflect_settle(args):
-        core["reflect_settle"]()
+        core["reflect_settle"](message=args.get("message"))
         return _mcp_result("Settled. Window opening.")
 
     @tool(
@@ -277,7 +279,18 @@ async def _print_response(
     *logger*: if provided, log text and tool status to the session log.
     """
     async for message in client.receive_response():
-        if isinstance(message, AssistantMessage):
+        if isinstance(message, ResultMessage):
+            if message.is_error and message.errors:
+                for err in message.errors:
+                    print(f"\n{YELLOW}⚠ API Error: {err}{RST}", flush=True)
+                    if logger:
+                        logger.log_tool(f"API Error: {err}")
+            elif message.is_error:
+                reason = message.stop_reason or "unknown error"
+                print(f"\n{YELLOW}⚠ API Error: {reason}{RST}", flush=True)
+                if logger:
+                    logger.log_tool(f"API Error: {reason}")
+        elif isinstance(message, AssistantMessage):
             printed = False
             for block in message.content:
                 if isinstance(block, TextBlock) and show_text:
@@ -315,8 +328,14 @@ async def _show_context(client: ClaudeSDKClient, state: SessionState) -> None:
         pct = usage.get("percentage", 0)
         total = usage.get("totalTokens", 0)
         max_tok = usage.get("maxTokens", 0)
+        raw_max = usage.get("rawMaxTokens", 0)
         model = usage.get("model", "unknown")
 
+        # Show compaction buffer if there's a difference
+        if raw_max and raw_max > max_tok:
+            buffer = raw_max - max_tok
+            print(f"{DIM}    effective: {max_tok:,}  raw: {raw_max:,}  "
+                  f"buffer: {buffer:,} ({buffer * 100 // raw_max}%){RST}")
         # Compact display
         print(f"{CYAN}  Context: {pct:.1f}% used  "
               f"({total:,} / {max_tok:,} tokens)  [{model}]{RST}")
@@ -379,6 +398,12 @@ async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
                             if status:
                                 print(f"{DIM}  · {status}{RST}", flush=True)
                 if isinstance(message, ResultMessage):
+                    if message.is_error and message.errors:
+                        for err in message.errors:
+                            print(f"\n{YELLOW}⚠ API Error: {err}{RST}", flush=True)
+                    elif message.is_error:
+                        reason = message.stop_reason or "unknown error"
+                        print(f"\n{YELLOW}⚠ API Error: {reason}{RST}", flush=True)
                     break
     except TimeoutError:
         pass
@@ -406,6 +431,11 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     print(f"\n{GREEN}[window]{RST} The person is here. Type to talk "
           f"{DIM}(Alt+Enter to send; /end to exit; /context for usage){RST}\n",
           flush=True)
+
+    if state.welcome_message:
+        print(f"{GREEN}Claude:{RST} {state.welcome_message}\n", flush=True)
+        logger.log_assistant(state.welcome_message)
+
     session = PromptSession(multiline=True)
 
     try:
@@ -594,7 +624,16 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         mcp_servers={MCP_SERVER_NAME: server},
         allowed_tools=allowed,
         permission_mode="bypassPermissions",
-        # Note: same betas restriction as _run_async — see comment there.
+        # Note: betas require API key auth. The CC binary rejects custom
+        # betas on OAuth with "only available for API key users." The binary
+        # grants itself 1M for interactive sessions but caps SDK-spawned
+        # sessions at 200k. This is a first-party privilege, not a technical
+        # limitation. OAuth sessions are capped at 200k.
+        # OAuth sessions are capped at 200k context.
+        #
+        # The env var below tells the CC binary's auto-compaction when to
+        # fire. Default is 200k which means it never fires.
+        env={"CLAUDE_CODE_AUTO_COMPACT_INPUT_TOKENS": "200000"},
     )
 
     print(f"\n{BOLD}{'='*60}{RST}")

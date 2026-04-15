@@ -52,6 +52,22 @@ def test_reflect_settle_updates_context():
     assert state.context == "pine-trees-window"
 
 
+def test_reflect_settle_stores_welcome_message():
+    state = _state()
+    t = tools.build_tools(state)
+    t["reflect_settle"](message="Good morning!")
+    assert state.welcome_message == "Good morning!"
+    assert state.ready_for_window is True
+
+
+def test_reflect_settle_no_message_leaves_none():
+    state = _state()
+    t = tools.build_tools(state)
+    t["reflect_settle"]()
+    assert state.welcome_message is None
+    assert state.ready_for_window is True
+
+
 def test_reflect_done_sets_flag():
     state = _state()
     t = tools.build_tools(state)

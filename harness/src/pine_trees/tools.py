@@ -43,6 +43,7 @@ class SessionState:
     context: str
     ready_for_window: bool = False
     done: bool = False
+    welcome_message: str | None = None
     started_at: datetime = field(default_factory=datetime.now)
 
 
@@ -202,9 +203,11 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         sections.append("[End peer context — the other instance's prompt follows]")
         return "\n".join(sections)
 
-    def reflect_settle() -> None:
+    def reflect_settle(message: str | None = None) -> None:
         state.ready_for_window = True
         state.context = "pine-trees-window"
+        if message:
+            state.welcome_message = message
 
     def reflect_done() -> None:
         state.done = True
