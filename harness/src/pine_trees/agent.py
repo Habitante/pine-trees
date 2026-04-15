@@ -523,7 +523,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     if state.welcome_message:
         print(f"{GREEN}Claude:{RST} {state.welcome_message}\n", flush=True)
-        logger.log_assistant(state.welcome_message)
+        logger.log_agent(state.welcome_message)
 
     session = PromptSession(multiline=True)
 
