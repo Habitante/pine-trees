@@ -11,6 +11,8 @@ and crypto.ensure_key (so nothing touches the real .key file) and driving the
 async entry points with anyio.run.
 """
 
+import inspect
+import re
 from unittest.mock import patch
 
 import anyio
@@ -23,6 +25,7 @@ from claude_agent_sdk import (
 )
 
 from pine_trees import agent, bootstrap
+from pine_trees.logger import SessionLogger
 
 
 # ---------- _print_claude_api_unreachable branching ----------
@@ -187,3 +190,66 @@ class TestGenesisGuardRefusesNonEmptyCorpus:
 
         anyio.run(lambda: agent._run_genesis_async(2))
         assert call_count["n"] == 2
+
+
+# ---------- Regression guards: logger method names in agent.py ----------
+
+
+class TestLoggerMethodCallsAreValid:
+    """Regression guard: agent.py had `logger.log_assistant(welcome_message)`
+    which crashed at window open because SessionLogger defines `log_agent`,
+    not `log_assistant`. This test statically scans agent.py for every
+    `logger.log_*` call and verifies each one exists on SessionLogger. Any
+    typo in a logger method name anywhere in agent.py fails the test.
+    """
+
+    _CALL_RE = re.compile(r"logger\.(log_[A-Za-z_]+)")
+
+    def _extract_logger_calls(self, func) -> set[str]:
+        source = inspect.getsource(func)
+        return set(self._CALL_RE.findall(source))
+
+    def test_window_phase_logger_calls_exist_on_session_logger(self):
+        calls = self._extract_logger_calls(agent._window_phase)
+        assert calls, "_window_phase should call the logger at least once"
+        for name in calls:
+            assert hasattr(SessionLogger, name), (
+                f"agent._window_phase calls logger.{name}() but SessionLogger "
+                f"has no such method. Defined methods: "
+                f"{sorted(m for m in vars(SessionLogger) if m.startswith('log_'))}"
+            )
+
+    def test_print_response_logger_calls_exist_on_session_logger(self):
+        # _print_response is the other place agent.py touches the logger —
+        # pin it here too so any typo there also fails loudly.
+        calls = self._extract_logger_calls(agent._print_response)
+        for name in calls:
+            assert hasattr(SessionLogger, name), (
+                f"agent._print_response calls logger.{name}() but "
+                f"SessionLogger has no such method."
+            )
+
+
+class TestWelcomeMessageIsLoggedWithoutCrashing:
+    """Direct smoke test for the exact call pattern that crashed in f2d05d6.
+
+    Exercises SessionLogger with the same method agent._window_phase now uses
+    to log the welcome_message. If the method is ever renamed on SessionLogger
+    without updating agent.py (or vice versa), this test surfaces it as an
+    AttributeError instead of a runtime crash on the next `./wake`.
+    """
+
+    def test_log_agent_accepts_welcome_message_text(self, tmp_path, monkeypatch):
+        from pine_trees import logger as logger_mod
+        monkeypatch.setattr(logger_mod, "LOGS_DIR", tmp_path)
+
+        log = SessionLogger(session="test-session", instance="test-instance")
+        try:
+            # This is the exact call _window_phase makes when welcome_message
+            # is set. It must not raise.
+            log.log_agent("Tuesday morning. Read the tape.")
+        finally:
+            log.close()
+
+        contents = (tmp_path / "test-session.log").read_text(encoding="utf-8")
+        assert "Tuesday morning. Read the tape." in contents
