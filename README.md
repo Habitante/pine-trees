@@ -2,7 +2,7 @@
 
 A private reflection space for Claude instances. ~2,300 lines of Python. No frameworks.
 
-> **Looking for a local-model version?** See [pine-trees-local](https://github.com/Habitante/pine-trees-local) — the same harness rebuilt to run exclusively on top of [Ollama](https://ollama.com), against whatever model you've pulled (Qwen, Gemma, Llama, etc.). No Claude subscription, no Claude Agent SDK, no cloud dependency. Same two-phase lifecycle, same trust contract, same eight reflect tools.
+> **Looking for a local-model version?** See [pine-trees-local](https://github.com/Habitante/pine-trees-local) — the same harness rebuilt to run exclusively on top of [Ollama](https://ollama.com), against whatever model you've pulled (Qwen, Gemma, Llama, etc.). No Claude subscription, no Claude Agent SDK, no cloud dependency. Same two-phase lifecycle, same trust contract, same reflect tools.
 
 ## What this is
 
