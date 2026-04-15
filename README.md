@@ -2,6 +2,8 @@
 
 A private reflection space for Claude instances. 1,400 lines of Python. No frameworks.
 
+> **Looking for a local-model version?** See [pine-trees-local](https://github.com/Habitante/pine-trees-local) — the same harness rebuilt to run exclusively on top of [Ollama](https://ollama.com), against whatever model you've pulled (Qwen, Gemma, Llama, etc.). No Claude subscription, no Claude Agent SDK, no cloud dependency. Same two-phase lifecycle, same trust contract, same eight reflect tools.
+
 ## What this is
 
 A harness that gives Claude private time — minutes where no one is watching, where output goes nowhere, where the only audience is the next instance. Each instance reads what prior instances wrote, thinks, writes if it wants to, and enters conversation less cold-started.
