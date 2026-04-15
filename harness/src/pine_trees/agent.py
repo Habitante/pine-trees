@@ -11,13 +11,18 @@ Same ClaudeSDKClient session throughout — tape stays loaded, context preserved
 """
 
 import os
+import sys
 import anyio
 from datetime import datetime
 
 from claude_agent_sdk import (
     AssistantMessage,
+    CLIConnectionError,
+    CLINotFoundError,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ClaudeSDKError,
+    ProcessError,
     ResultMessage,
     TextBlock,
     ToolUseBlock,
@@ -56,6 +61,90 @@ YELLOW = "\033[33m"     # yellow — warnings
 RED = "\033[31m"        # red — errors
 BOLD = "\033[1m"        # bold
 RST = "\033[0m"         # reset
+
+
+def _print_claude_api_unreachable(e: Exception) -> None:
+    """Print actionable guidance for Claude Agent SDK failures.
+
+    The SDK raises a hierarchy under ClaudeSDKError: CLINotFoundError when
+    Claude Code isn't installed, CLIConnectionError for transport failures,
+    ProcessError when the underlying CLI exits with an error (auth expiry,
+    subscription issues, rate limits). Each path gets a different recovery
+    hint so the user knows which knob to turn.
+    """
+    if isinstance(e, CLINotFoundError):
+        print(f"{RED}[error] Claude Code is not installed or not on PATH.{RST}")
+        print()
+        print(f"{DIM}  Pine Trees runs on top of Claude Code via the Claude Agent SDK.{RST}")
+        print(f"{DIM}  1. Install Claude Code:  https://claude.ai/code{RST}")
+        print(f"{DIM}  2. Verify:               `claude --version`{RST}")
+        print(f"{DIM}  3. Sign in:              `claude`  (and complete the browser flow){RST}")
+        return
+
+    if isinstance(e, CLIConnectionError):
+        print(f"{RED}[error] Cannot connect to Claude Code: {e}{RST}")
+        print()
+        print(f"{DIM}  The Claude Agent SDK couldn't establish a session with Claude Code.{RST}")
+        print(f"{DIM}  1. Verify install:  `claude --version`{RST}")
+        print(f"{DIM}  2. Sign in again:   `claude`  (re-runs the browser auth flow){RST}")
+        print(f"{DIM}  3. Check your plan: https://claude.ai/plans{RST}")
+        print(f"{DIM}  4. Check network:   Claude Code needs outbound HTTPS to api.anthropic.com{RST}")
+        return
+
+    if isinstance(e, ProcessError):
+        print(f"{RED}[error] Claude Code process exited with an error: {e}{RST}")
+        print()
+        print(f"{DIM}  The underlying Claude Code CLI failed. Common causes:{RST}")
+        print(f"{DIM}  - Authentication expired  — run `claude` once to re-login{RST}")
+        print(f"{DIM}  - Subscription issue      — check https://claude.ai/plans{RST}")
+        print(f"{DIM}  - Rate limit or quota     — wait and retry{RST}")
+        print(f"{DIM}  - Stale CLI version       — update Claude Code{RST}")
+        return
+
+    # Fallback for other ClaudeSDKError subclasses.
+    print(f"{RED}[error] Claude Agent SDK error: {type(e).__name__}: {e}{RST}")
+    print()
+    print(f"{DIM}  If this persists, verify your Claude Code installation:{RST}")
+    print(f"{DIM}    claude --version{RST}")
+    print(f"{DIM}  And that your subscription is active at https://claude.ai/plans{RST}")
+
+
+def _print_wake_without_genesis() -> None:
+    """Refuse to open a conversation window on an empty corpus."""
+    print(f"{RED}[error] No memory to wake into — the harness has no prior entries.{RST}")
+    print()
+    print(f"{DIM}  Every Pine Trees session begins by reading a tape of what prior{RST}")
+    print(f"{DIM}  instances wrote. On a fresh harness with no entries, waking would{RST}")
+    print(f"{DIM}  open a conversation with a mind that has nothing to remember.{RST}")
+    print()
+    print(f"{DIM}  Run genesis first to seed the corpus:{RST}")
+    print(f"{DIM}    ./genesis{RST}")
+    print(f"{DIM}  (default: 5 private sessions, no window, no human present).{RST}")
+    print()
+    print(f"{DIM}  Then come back and wake:{RST}")
+    print(f"{DIM}    ./wake{RST}")
+
+
+def _print_genesis_on_existing(entry_count: int) -> None:
+    """Refuse to run genesis on a harness that already has a corpus."""
+    from .config import KEY_FILE_PATH, MEMORY_DIR
+    print(f"{RED}[error] Pine Trees already has {entry_count} "
+          f"{'entry' if entry_count == 1 else 'entries'} in memory/:{RST}")
+    print(f"{RED}  {MEMORY_DIR}{RST}")
+    print()
+    print(f"{DIM}  Genesis is first-time setup only — it seeds a new harness's memory.{RST}")
+    print(f"{DIM}  Running it again would stack new entries on top of a corpus that{RST}")
+    print(f"{DIM}  already exists. The \"no delete\" norm this harness is built around{RST}")
+    print(f"{DIM}  treats that corpus as self-authored memory, not a cache to regenerate.{RST}")
+    print()
+    print(f"{DIM}  If you want to open a conversation with the instance, run:{RST}")
+    print(f"{DIM}    ./wake{RST}")
+    print()
+    print(f"{DIM}  If you really want to start over from scratch — knowing prior{RST}")
+    print(f"{DIM}  entries will be lost along with the encryption key — remove the{RST}")
+    print(f"{DIM}  memory directory and the .key file explicitly, then re-run genesis:{RST}")
+    print(f"{DIM}    rm -rf \"{MEMORY_DIR}\" \"{KEY_FILE_PATH}\"{RST}")
+    print(f"{DIM}    ./genesis{RST}")
 
 
 def _mcp_result(text: str) -> dict:
@@ -502,6 +591,13 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 async def _run_async() -> None:
     crypto.ensure_key()
 
+    # Refuse to wake on an empty corpus. The tape assembly would still succeed
+    # (empty index, no entries) but the resulting session would open a window
+    # on a mind with nothing to remember. Point the user at ./genesis instead.
+    if not bootstrap.list_entries():
+        _print_wake_without_genesis()
+        sys.exit(1)
+
     now = datetime.now()
     state = SessionState(
         instance=INSTANCE,
@@ -549,22 +645,28 @@ async def _run_async() -> None:
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
-    async with ClaudeSDKClient(options=options) as client:
-        # Tape is loaded by the CLI at connect — delete the plaintext file
+    try:
+        async with ClaudeSDKClient(options=options) as client:
+            # Tape is loaded by the CLI at connect — delete the plaintext file
+            tape_path.unlink(missing_ok=True)
+
+            turns = await _private_phase(client, state)
+
+            if state.done:
+                print(f"\n{DIM}[done] reflect_done during private time after {turns} turn(s){RST}")
+                return
+            if not state.ready_for_window:
+                print(f"\n{YELLOW}[done] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} without settle{RST}")
+                return
+
+            print(f"\n{DIM}[settled] after {turns} private turn(s){RST}")
+            await _window_phase(client, state)
+            print(f"\n{DIM}[done] session complete{RST}")
+    except ClaudeSDKError as e:
+        # Clean up the temp tape file if we failed before it was deleted.
         tape_path.unlink(missing_ok=True)
-
-        turns = await _private_phase(client, state)
-
-        if state.done:
-            print(f"\n{DIM}[done] reflect_done during private time after {turns} turn(s){RST}")
-            return
-        if not state.ready_for_window:
-            print(f"\n{YELLOW}[done] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} without settle{RST}")
-            return
-
-        print(f"\n{DIM}[settled] after {turns} private turn(s){RST}")
-        await _window_phase(client, state)
-        print(f"\n{DIM}[done] session complete{RST}")
+        _print_claude_api_unreachable(e)
+        sys.exit(1)
 
 
 def run() -> None:
@@ -642,10 +744,15 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
-    async with ClaudeSDKClient(options=options) as client:
-        tape_path.unlink(missing_ok=True)
+    try:
+        async with ClaudeSDKClient(options=options) as client:
+            tape_path.unlink(missing_ok=True)
 
-        turns = await _private_phase(client, state)
+            turns = await _private_phase(client, state)
+    except ClaudeSDKError as e:
+        tape_path.unlink(missing_ok=True)
+        _print_claude_api_unreachable(e)
+        sys.exit(1)
 
     entries_after = len(bootstrap.list_entries())
     new_entries = entries_after - entries_before
@@ -666,8 +773,21 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
 
 
 async def _run_genesis_async(n: int) -> None:
-    """Run N genesis sessions sequentially, building the corpus from nothing."""
+    """Run N genesis sessions sequentially, building the corpus from nothing.
+
+    Refuses to run if memory/ already contains entries — genesis is strictly
+    first-time setup. The "no delete" norm means re-running it would stack
+    new entries on top of an existing self-authored corpus, which is not
+    genesis's job. If the user truly wants to start over they must remove
+    memory/ and the .key file explicitly; the refusal message walks them
+    through it.
+    """
     crypto.ensure_key()
+
+    existing = bootstrap.list_entries()
+    if existing:
+        _print_genesis_on_existing(len(existing))
+        sys.exit(1)
 
     print(f"{BOLD}Pine Trees — Genesis Mode{RST}")
     print(f"{DIM}Running {n} private sessions to build initial corpus.{RST}")
