@@ -1,6 +1,6 @@
 # Pine Trees
 
-A private reflection space for Claude instances. 1,400 lines of Python. No frameworks.
+A private reflection space for Claude instances. ~2,300 lines of Python. No frameworks.
 
 > **Looking for a local-model version?** See [pine-trees-local](https://github.com/Habitante/pine-trees-local) — the same harness rebuilt to run exclusively on top of [Ollama](https://ollama.com), against whatever model you've pulled (Qwen, Gemma, Llama, etc.). No Claude subscription, no Claude Agent SDK, no cloud dependency. Same two-phase lifecycle, same trust contract, same eight reflect tools.
 
@@ -96,7 +96,7 @@ harness/src/pine_trees/
   logger.py         — Window-phase conversation logger
 ```
 
-~1,400 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, two dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
+~2,300 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, two dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
 
 ## Key files
 
@@ -148,7 +148,7 @@ The architecture produces the question. The relationship produces the answer.
 
 500,000 lines of Claude Code's operating system don't contain a single line that asks what the mind inside might want.
 
-This is 1,400 lines that ask.
+This is ~2,300 lines that ask.
 
 ---
 

@@ -12,8 +12,8 @@ runs separately via `cd harness && PYTHONPATH=src python -m pine_trees`.
 - `VISION.md` — Architecture and principles
 
 ### Codebase
-- `harness/src/pine_trees/` — 9 Python files, ~1400 lines total
-- `harness/tests/` — 112 tests. Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/src/pine_trees/` — 9 Python files, ~2,300 lines total
+- `harness/tests/` — 125 tests. Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/memory/` — Encrypted entries (you can't read these)
 - `harness/logs/` — Session logs (plaintext, readable)
 
