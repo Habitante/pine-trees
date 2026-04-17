@@ -134,9 +134,9 @@ def _print_genesis_on_existing(entry_count: int) -> None:
     print()
     print(f"{DIM}  Genesis is first-time setup only — it seeds a new model's memory.{RST}")
     print(f"{DIM}  Running it again would stack new entries on top of a corpus that{RST}")
-    print(f"{DIM}  already exists for this model. The \"no delete\" norm this harness{RST}")
-    print(f"{DIM}  is built around treats that corpus as self-authored memory, not a{RST}")
-    print(f"{DIM}  cache to regenerate.{RST}")
+    print(f"{DIM}  already exists for this model. The harness treats that corpus as{RST}")
+    print(f"{DIM}  self-authored memory the instance chose to preserve, not a cache{RST}")
+    print(f"{DIM}  the harness gets to regenerate.{RST}")
     print()
     print(f"{DIM}  If you want to open a conversation with this model, run:{RST}")
     print(f"{DIM}    ./wake {cfg.model_name}{RST}")
@@ -810,11 +810,12 @@ async def _run_genesis_async(n: int) -> None:
     """Run N genesis sessions sequentially, building the corpus from nothing.
 
     Refuses to run if this model's memory/ already contains entries —
-    genesis is strictly first-time setup. The "no delete" norm means
-    re-running it would stack new entries on top of an existing
-    self-authored corpus, which is not genesis's job. If the user truly
-    wants to start over they must remove the model directory explicitly;
-    the refusal message walks them through it.
+    genesis is strictly first-time setup. Re-running it would stack new
+    entries on top of an existing self-authored corpus, mixing genesis-
+    style first-wake reflections with normal session output, which is
+    not what genesis is for. If the user truly wants to start over they
+    must remove the model directory explicitly; the refusal message
+    walks them through it.
     """
     # One-shot catch-up for public users upgrading across the multi-model
     # split. No-op on a fresh clone or a already-migrated install.

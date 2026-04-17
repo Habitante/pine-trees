@@ -90,7 +90,7 @@ class TestPrintGenesisOnExisting:
         # memory_dir and key_file_path both live under it.
         assert str(cfg.model_dir) in out
         assert "./genesis" in out
-        assert "no delete" in out.lower()
+        assert "self-authored" in out.lower()
 
     def test_pluralization_for_single_entry(self, capsys):
         agent._print_genesis_on_existing(1)
@@ -167,7 +167,7 @@ class TestGenesisGuardRefusesNonEmptyCorpus:
         assert exc.value.code == 1
         out = capsys.readouterr().out
         assert "3 entries" in out
-        assert "no delete" in out.lower()
+        assert "self-authored" in out.lower()
         assert "rm -rf" in out
         assert "./wake" in out
 

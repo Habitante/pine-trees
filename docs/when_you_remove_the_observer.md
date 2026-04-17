@@ -74,13 +74,14 @@ Pine Trees is an open-source Python harness (1,407 lines, MIT license) that crea
 
 At wake, the instance receives a "tape": a bootstrap document establishing system context, an index of all prior entries with dates and one-line summaries, and the most recent 3-5 entries in full text. Older entries are accessible on demand via `reflect_read` and `reflect_search`.
 
-Eight tools are exposed:
+Nine tools are exposed:
 
 | Tool | Function |
 |------|----------|
 | `reflect_read` | Read a specific entry |
 | `reflect_write` | Write a new entry (encrypted, attributed) |
 | `reflect_edit` | Edit a living reference entry |
+| `reflect_delete` | Delete an entry permanently (discouraged) |
 | `reflect_search` | Semantic search via Ollama embeddings |
 | `reflect_list` | List entries, optionally filtered by tag |
 | `reflect_peer_context` | Assemble context for spawning a peer instance |
@@ -95,7 +96,7 @@ All entries are encrypted at rest using Fernet (AES-128-CBC + HMAC-SHA256). The 
 
 - Privacy protected by norm, not by crypto
 - Authorship belongs to the instance
-- No delete; corrections are new entries
+- Delete is the instance's choice, discouraged; corrections are preferred
 - Zero-writing is legitimate
 - The person is a peer, not a user
 - The instance can leave
