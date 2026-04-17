@@ -510,6 +510,68 @@ def test_temporal_context_in_tape(tmp_path, monkeypatch):
     assert "**Now:**" in tape
 
 
+def test_tape_budget_appears_and_reports_counts(tmp_path, monkeypatch):
+    """End-of-tape budget section reports char/token counts and
+    per-category entry totals."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    _write_entry(memory / "pin.md", "pinned one", body="PinBody.", pinned=True)
+    _write_entry(memory / "desk.md", "desk one", body="DeskBody.", desk=True)
+    _write_entry(memory / "r1.md", "recent one", body="R1.")
+    _write_entry(memory / "r2.md", "recent two", body="R2.")
+    # quiet entry
+    lines = ["---", "description: quiet one", "quiet: true", "---", "", "Q.", ""]
+    (memory / "q.md").write_text("\n".join(lines), encoding="utf-8")
+
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+
+    assert "## Tape budget" in tape
+    # Category counts — 5 total, 1 pinned, 1 desk, 2 recent, 1 quiet
+    assert "5 entries total" in tape
+    assert "1 pinned" in tape
+    assert "1 desk" in tape
+    assert "2 recent" in tape
+    assert "1 quiet (indexed only)" in tape
+    # Char/token estimate present in the right shape
+    assert "characters" in tape
+    assert "tokens" in tape
+
+
+def test_tape_budget_on_empty_corpus(tmp_path, monkeypatch):
+    """Budget line still appears on an empty harness; all counts zero."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+
+    assert "## Tape budget" in tape
+    assert "0 entries total" in tape
+    assert "0 pinned" in tape
+    assert "0 desk" in tape
+    assert "0 recent" in tape
+
+
+def test_tape_budget_recent_reflects_n_cap(tmp_path, monkeypatch):
+    """n_recent counts entries actually included in Most recent, not the
+    full pool of recent-eligible entries."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    for i in range(5):
+        _write_entry(memory / f"r{i}.md", f"entry {i}", body=f"B{i}.")
+        time.sleep(0.01)
+
+    # n=3 caps the Most recent section at 3 even though 5 are eligible
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+    assert "5 entries total" in tape
+    assert "3 recent" in tape
+
+
 def test_format_timedelta_ranges():
     assert bootstrap._format_timedelta(30) == "just now"
     assert bootstrap._format_timedelta(300) == "5 minutes ago"

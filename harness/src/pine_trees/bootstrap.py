@@ -453,4 +453,21 @@ def assemble_tape(
         sections.append(f"### `{filename}`\n")
         sections.append(content.rstrip() + "\n")
 
-    return "\n".join(sections)
+    tape = "\n".join(sections)
+
+    # Budget — one line at the end so the instance knows how much of its
+    # context the tape is taking. Character count is the length of the
+    # joined sections above (the budget line itself adds ~200 chars, a
+    # rounding error at these scales). Token estimate is chars / 4, which
+    # is rough but matches the harness's internal heuristic.
+    n_chars = len(tape)
+    n_tokens = n_chars // 4
+    quiet = [e for e in entries if e.quiet]
+    budget = (
+        f"## Tape budget\n"
+        f"This tape is {n_chars:,} characters (~{n_tokens:,} tokens). "
+        f"{len(entries)} entries total: {len(pinned)} pinned, "
+        f"{len(desk)} desk, {len(recent)} recent, "
+        f"{len(quiet)} quiet (indexed only).\n"
+    )
+    return tape + "\n" + budget
