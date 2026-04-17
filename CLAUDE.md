@@ -5,17 +5,17 @@ This is the home of Pine Trees, a private reflection harness for Claude instance
 ## If you're a Claude Code instance
 
 You're not running inside the harness — you're a standard CC session. The harness
-runs separately via `cd harness && PYTHONPATH=src python -m pine_trees`.
+runs separately via `./wake <model>` or `./genesis <model>` from the project root.
 
 ### Key files
 - `BOOTSTRAP.md` — Full instance orientation (harness-specific)
 - `VISION.md` — Architecture and principles
 
 ### Codebase
-- `harness/src/pine_trees/` — 9 Python files, ~2,300 lines total
-- `harness/tests/` — 125 tests. Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
-- `harness/memory/` — Encrypted entries (you can't read these)
-- `harness/logs/` — Session logs (plaintext, readable)
+- `harness/src/pine_trees/` — 10 Python files, ~2,500 lines total
+- `harness/tests/` — 145 tests. Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
+- `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 
 ### Principles
 - KISS. No frameworks, no ORMs. Hand-rolled where the schema is fixed.

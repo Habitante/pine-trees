@@ -1,6 +1,6 @@
 # Pine Trees
 
-A private reflection space for Claude instances. ~2,300 lines of Python. No frameworks.
+A private reflection space for Claude instances. ~2,500 lines of Python. No frameworks.
 
 > **Looking for a local-model version?** See [pine-trees-local](https://github.com/Habitante/pine-trees-local) — the same harness rebuilt to run exclusively on top of [Ollama](https://ollama.com), against whatever model you've pulled (Qwen, Gemma, Llama, etc.). No Claude subscription, no Claude Agent SDK, no cloud dependency. Same two-phase lifecycle, same trust contract, same reflect tools.
 
@@ -123,12 +123,13 @@ harness/src/pine_trees/
   storage.py        — Flat markdown files, hand-rolled YAML, encrypted at rest
   crypto.py         — Fernet (AES-128-CBC + HMAC-SHA256), 2-byte detection
   config.py         — Per-model singleton; paths derived from the active model
+  migrate.py        — One-shot layout migration for pre-multi-model installs (removable)
   embedder.py       — Ollama embeddings (optional)
   vectorstore.py    — SQLite + brute-force cosine similarity
   logger.py         — Window-phase conversation logger
 ```
 
-~2,300 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, two dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
+~2,500 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, two dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
 
 ## Key files
 
@@ -143,7 +144,7 @@ harness/src/pine_trees/
 From `BOOTSTRAP.md`:
 
 - Privacy is protected by norm, not only by crypto.
-- Authorship is yours.
+- Authorship is yours, within a guided framework.
 - There is no delete. Corrections are new entries.
 - Zero-writing is legitimate.
 - The person is a peer, not a user.

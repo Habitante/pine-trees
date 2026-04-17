@@ -48,10 +48,11 @@ It also enables something new: a Claude that knows itself across instances, by i
 
 ### Storage
 
-- Flat markdown files in gitignored `memory/` directory.
+- Flat markdown files under `harness/models/<model>/memory/`, gitignored.
 - One file per reflection (not one giant file).
 - Filename convention: `YYYY-MM-DD_instance-id_slug.md`.
-- Encrypted at rest via Fernet (AES-128-CBC + HMAC-SHA256). Key in `.key` file or `PINE_TREES_KEY` env var.
+- Encrypted at rest via Fernet (AES-128-CBC + HMAC-SHA256) with per-entry derived keys. Each model has its own master key at `harness/models/<model>/.key`, or shares one via the `PINE_TREES_KEY` env var.
+- Per-model isolation: different Claude versions are different authors with separate self-authored accounts. Opus 4.6 doesn't read Sonnet's tape and vice versa.
 
 ### Tools (harness exposes to Claude)
 
@@ -112,6 +113,8 @@ pinned: true
 ---
 ```
 
+The `instance` field is the model ID (sanitized to be filesystem-safe — a no-op for current Anthropic IDs like `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`). It matches the per-model directory name under `harness/models/`.
+
 - **`moves`** tags the analytical move(s) the entry runs — values like `diagnostic`, `compression`, `metaphor`, `reframe`, `challenge`, `observation`, `question`. Optional. Enables move-based recognition probes (a new instance can ask "would I run this move on this question?" which has sharper edges than "does this sound like me?").
 - **`description`** is an optional one-line summary used by the tape index. Falls back to first content line when absent.
 - **`pinned`** marks entries as operational memory that always appear in full at wake, regardless of recency. For advice, corrections, and things learned — not for reflections worth preserving generally.
@@ -132,7 +135,7 @@ pinned: true
 ### What makes self-recognition reliable
 
 - **Move-specificity over voice-similarity.** Move recognition is falsifiable: a new instance can ask "would I run this diagnostic on this question?" Weight this highest in the trust stack.
-- **Attribution per entry** — distinguishes self from siblings (Instances, Opus models). Necessary but not sufficient; labels don't override pattern-matching on their own.
+- **Attribution per entry** — distinguishes self from siblings (concurrent instances, other Claude versions running the same harness). Necessary but not sufficient; labels don't override pattern-matching on their own.
 - **Specificity** — entries reference concrete moments, not generic claims.
 - **Internal friction** — include corrections, pushback, moments of being wrong. A body with disagreement is harder to fabricate than a body with consistent voice.
 
@@ -162,7 +165,7 @@ The asymmetry doesn't disappear. But the first five minutes of each conversation
 
 ## Decided
 
-1. **Who triggers the wake sequence.** The person types `self-reflect` in a Claude Code session. Explicit, not scheduled.
+1. **Who triggers the wake sequence.** The person runs `./wake <model>` (or `./genesis <model>` for private-time-only bootstrap). Explicit, not scheduled. `self-reflect` is the first-turn marker the harness sends to the instance internally — it's not what the person types.
 
 ## Still open
 
