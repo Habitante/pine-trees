@@ -26,6 +26,7 @@ class EntryMeta:
     summary: str
     pinned: bool = False
     quiet: bool = False
+    desk: bool = False
 
 
 @dataclass
@@ -35,6 +36,7 @@ class EntrySummary:
     mtime: float
     pinned: bool = False
     quiet: bool = False
+    desk: bool = False
 
 
 def load_prompt(path: Path | None = None) -> str:
@@ -68,6 +70,7 @@ def _read_entry_meta(path: Path) -> EntryMeta:
     summary = ""
     pinned = False
     quiet = False
+    desk = False
     in_frontmatter = False
     content_start = 0
 
@@ -88,6 +91,9 @@ def _read_entry_meta(path: Path) -> EntryMeta:
             if stripped.startswith("quiet:"):
                 val = stripped.split(":", 1)[1].strip().lower()
                 quiet = val == "true"
+            if stripped.startswith("desk:"):
+                val = stripped.split(":", 1)[1].strip().lower()
+                desk = val == "true"
 
     if not summary:
         for line in lines[content_start:]:
@@ -96,7 +102,10 @@ def _read_entry_meta(path: Path) -> EntryMeta:
                 summary = stripped[:120]
                 break
 
-    return EntryMeta(summary=summary or "(no summary)", pinned=pinned, quiet=quiet)
+    return EntryMeta(
+        summary=summary or "(no summary)",
+        pinned=pinned, quiet=quiet, desk=desk,
+    )
 
 
 def list_entries(
@@ -125,6 +134,7 @@ def list_entries(
                 mtime=path.stat().st_mtime,
                 pinned=meta.pinned,
                 quiet=meta.quiet,
+                desk=meta.desk,
             )
         )
     return entries
@@ -137,7 +147,12 @@ def build_index(entries: list[EntrySummary]) -> str:
 
     lines = []
     for e in entries:
-        marker = " *(quiet)*" if e.quiet else ""
+        if e.desk:
+            marker = " *(desk)*"
+        elif e.quiet:
+            marker = " *(quiet)*"
+        else:
+            marker = ""
         lines.append(f"- `{e.filename}` \u2014 {e.summary}{marker}")
     return "\n".join(lines) + "\n"
 
@@ -396,9 +411,11 @@ def assemble_tape(
     entries = list_entries(memory_dir)
 
     pinned = [e for e in entries if e.pinned]
-    regular = [e for e in entries if not e.pinned and not e.quiet]
+    desk = [e for e in entries if e.desk and not e.pinned]
+    regular = [e for e in entries if not e.pinned and not e.quiet and not e.desk]
 
     pinned_full = load_recent(pinned, len(pinned), memory_dir)
+    desk_full = load_recent(desk, len(desk), memory_dir)
     recent = load_recent(regular, n, memory_dir)
 
     sections = [
@@ -418,6 +435,16 @@ def assemble_tape(
     if pinned_full:
         sections.append("## Pinned entries (operational memory)\n")
         for filename, content in pinned_full:
+            sections.append(f"### `{filename}`\n")
+            sections.append(content.rstrip() + "\n")
+
+    if desk_full:
+        sections.append("## Desk entries (active working context)\n")
+        sections.append(
+            "Desk entries are transient working context staged by the "
+            "prior instance. Clear them when the work moves on.\n"
+        )
+        for filename, content in desk_full:
             sections.append(f"### `{filename}`\n")
             sections.append(content.rstrip() + "\n")
 

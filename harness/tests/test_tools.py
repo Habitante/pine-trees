@@ -134,6 +134,36 @@ def test_write_with_description_and_pinned():
     assert entry["pinned"] is True
 
 
+def test_reflect_write_with_desk_flag():
+    """desk flag passes through reflect_write to storage."""
+    state = _state()
+    t = tools.build_tools(state)
+
+    filename = t["reflect_write"](
+        slug="handoff",
+        content="Sprint notes.",
+        desk=True,
+    )
+    entry = storage.read_entry(filename)
+    assert entry["desk"] is True
+
+
+def test_reflect_edit_toggles_desk_flag():
+    """desk flag on reflect_edit lets an instance clear a handoff."""
+    state = _state()
+    t = tools.build_tools(state)
+
+    filename = t["reflect_write"](
+        slug="handoff",
+        content="Sprint notes.",
+        desk=True,
+    )
+
+    t["reflect_edit"](filename, desk=False)
+    entry = t["reflect_read"](filename)
+    assert entry.get("desk", False) is False
+
+
 def test_reflect_edit_updates_content():
     state = _state()
     t = tools.build_tools(state)

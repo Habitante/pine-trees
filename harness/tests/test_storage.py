@@ -323,6 +323,72 @@ def test_edit_entry_metadata_only():
     assert entry["description"] == "New desc"
 
 
+def test_desk_roundtrip():
+    filename = storage.write_entry(
+        slug="handoff",
+        content="Active sprint notes.",
+        instance="claude-opus-4-6",
+        session="s",
+        date="2026-04-05",
+        context="ctx",
+        desk=True,
+    )
+    entry = storage.read_entry(filename)
+    assert entry["desk"] is True
+    assert entry["content"] == "Active sprint notes."
+
+
+def test_desk_omitted_when_false(tmp_path):
+    filename = storage.write_entry(
+        slug="normal",
+        content="Body.",
+        instance="claude-opus-4-6",
+        session="s",
+        date="2026-04-05",
+        context="ctx",
+    )
+    disk_text = (tmp_path / filename).read_text(encoding="utf-8")
+    assert "desk:" not in disk_text
+
+
+def test_edit_entry_toggles_desk_flag():
+    filename = storage.write_entry(
+        slug="handoff",
+        content="Body.",
+        instance="claude-opus-4-6",
+        session="s",
+        date="2026-04-05",
+        context="ctx",
+        desk=True,
+    )
+
+    # Clear the desk flag (work has moved on)
+    storage.edit_entry(filename, desk=False)
+    entry = storage.read_entry(filename)
+    assert entry.get("desk", False) is False
+
+    # Restage
+    storage.edit_entry(filename, desk=True)
+    entry = storage.read_entry(filename)
+    assert entry["desk"] is True
+
+
+def test_edit_entry_preserves_desk_when_not_provided():
+    filename = storage.write_entry(
+        slug="keep-desk",
+        content="Body.",
+        instance="claude-opus-4-6",
+        session="s",
+        date="2026-04-05",
+        context="ctx",
+        desk=True,
+    )
+
+    storage.edit_entry(filename, "New body.")
+    entry = storage.read_entry(filename)
+    assert entry["desk"] is True
+
+
 def test_edit_entry_toggles_quiet_flag():
 
     filename = storage.write_entry(

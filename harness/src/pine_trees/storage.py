@@ -70,6 +70,7 @@ def write_entry(
     description: str = "",
     pinned: bool = False,
     quiet: bool = False,
+    desk: bool = False,
 ) -> str:
     """Write a new entry. Returns the filename written.
 
@@ -80,6 +81,8 @@ def write_entry(
       pinned: always in full text at wake (operational memory)
       quiet: indexed and searchable but excluded from tape's full-text slots
              (background knowledge — project summaries, reference material)
+      desk:  full text at wake like pinned, but transient — meant to be
+             cleared when the work moves on (handoffs, active sprint notes)
     """
     memory_dir = config.get().memory_dir
     memory_dir.mkdir(parents=True, exist_ok=True)
@@ -97,6 +100,7 @@ def write_entry(
         description=description,
         pinned=pinned,
         quiet=quiet,
+        desk=desk,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -122,12 +126,13 @@ def edit_entry(
     description: str | None = None,
     pinned: bool | None = None,
     quiet: bool | None = None,
+    desk: bool | None = None,
 ) -> str:
     """Edit an existing entry. Returns the filename.
 
     All parameters except filename are optional — omit to preserve
     the current value. Pass content to update the body, description
-    to update the summary, pinned/quiet to toggle flags.
+    to update the summary, pinned/quiet/desk to toggle flags.
 
     Use for living reference entries (doc indices, project maps,
     trajectories, corpus entries). Reflections are moments — write
@@ -143,6 +148,7 @@ def edit_entry(
     desc = description if description is not None else entry.get("description", "")
     pin = pinned if pinned is not None else entry.get("pinned", False)
     qut = quiet if quiet is not None else entry.get("quiet", False)
+    dsk = desk if desk is not None else entry.get("desk", False)
 
     frontmatter = _format_frontmatter(
         instance=entry.get("instance", ""),
@@ -154,6 +160,7 @@ def edit_entry(
         description=desc,
         pinned=pin,
         quiet=qut,
+        desk=dsk,
         timestamp=entry.get("timestamp", ""),
     )
 
@@ -188,6 +195,7 @@ def _format_frontmatter(
     description: str = "",
     pinned: bool = False,
     quiet: bool = False,
+    desk: bool = False,
     timestamp: str = "",
 ) -> str:
     lines = [
@@ -207,6 +215,8 @@ def _format_frontmatter(
         lines.append("pinned: true")
     if quiet:
         lines.append("quiet: true")
+    if desk:
+        lines.append("desk: true")
     lines.extend([FRONTMATTER_DELIM, ""])
     return "\n".join(lines) + "\n"
 

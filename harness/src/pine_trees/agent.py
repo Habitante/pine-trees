@@ -157,7 +157,7 @@ def _format_entry(filename: str, entry: dict) -> str:
     """Format a storage entry for display to the instance."""
     text = f"# {filename}\n\n"
     for key in ("instance", "session", "date", "context", "tags", "moves",
-                "timestamp", "description", "pinned", "quiet"):
+                "timestamp", "description", "pinned", "quiet", "desk"):
         if key in entry:
             text += f"{key}: {entry[key]}\n"
     text += f"\n{entry.get('content', '')}\n"
@@ -202,9 +202,12 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "quiet (default false) marks entries as background knowledge — "
         "indexed and searchable but excluded from the tape's full-text "
         "slots (use for project summaries, reference material). "
+        "desk (default false) marks entries as transient working context — "
+        "shown in full at wake like pinned, but meant to be cleared when "
+        "the work moves on (handoffs, active sprint notes). "
         "Returns the filename written.",
         {"slug": str, "content": str, "tags": list, "moves": list,
-         "description": str, "pinned": bool, "quiet": bool},
+         "description": str, "pinned": bool, "quiet": bool, "desk": bool},
     )
     async def reflect_write(args):
         filename = core["reflect_write"](
@@ -215,6 +218,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
             description=args.get("description", ""),
             pinned=args.get("pinned", False),
             quiet=args.get("quiet", False),
+            desk=args.get("desk", False),
         )
         return _mcp_result(f"Wrote {filename}")
 
@@ -225,9 +229,9 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "living reference entries (doc indices, project maps, trajectories) "
         "— not for revising reflections (those are moments; write corrections "
         "as new entries instead). "
-        "Pass pinned/quiet to toggle flags without resending content.",
+        "Pass pinned/quiet/desk to toggle flags without resending content.",
         {"filename": str, "content": str, "description": str,
-         "pinned": bool, "quiet": bool},
+         "pinned": bool, "quiet": bool, "desk": bool},
     )
     async def reflect_edit(args):
         filename = core["reflect_edit"](
@@ -236,6 +240,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
             description=args.get("description"),
             pinned=args.get("pinned"),
             quiet=args.get("quiet"),
+            desk=args.get("desk"),
         )
         return _mcp_result(f"Updated {filename}")
 

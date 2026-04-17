@@ -80,6 +80,7 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         description: str = "",
         pinned: bool = False,
         quiet: bool = False,
+        desk: bool = False,
     ) -> str:
         filename = storage.write_entry(
             slug=slug,
@@ -93,6 +94,7 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
             description=description,
             pinned=pinned,
             quiet=quiet,
+            desk=desk,
         )
         _try_embed_and_store(filename, content)
         return filename
@@ -103,10 +105,11 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         description: str | None = None,
         pinned: bool | None = None,
         quiet: bool | None = None,
+        desk: bool | None = None,
     ) -> str:
         result = storage.edit_entry(
             filename, content, description,
-            pinned=pinned, quiet=quiet,
+            pinned=pinned, quiet=quiet, desk=desk,
         )
         if content is not None:
             _try_embed_and_store(filename, content)

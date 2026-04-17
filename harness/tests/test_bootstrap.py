@@ -8,11 +8,17 @@ from pine_trees import bootstrap
 
 
 def _write_entry(
-    path: Path, description: str, body: str = "Body.", pinned: bool = False,
+    path: Path,
+    description: str,
+    body: str = "Body.",
+    pinned: bool = False,
+    desk: bool = False,
 ) -> None:
     lines = [f"---", f"description: {description}"]
     if pinned:
         lines.append("pinned: true")
+    if desk:
+        lines.append("desk: true")
     lines.extend(["---", "", body, ""])
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -325,6 +331,115 @@ def test_quiet_entries_excluded_from_recent_full_text(tmp_path, monkeypatch):
     assert "Quiet body." not in tape
     # Regular entry does appear in full text
     assert "Regular body." in tape
+
+
+def test_desk_entries_appear_in_tape_in_their_own_section(tmp_path, monkeypatch):
+    """Desk entries get a 'Desk entries (active working context)' section,
+    positioned between pinned and recent."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+
+    _write_entry(memory / "pinned.md", "pinned entry", body="Pinned body.", pinned=True)
+    time.sleep(0.01)
+    _write_entry(memory / "desk.md", "handoff notes", body="Desk body.", desk=True)
+    time.sleep(0.01)
+    _write_entry(memory / "recent.md", "latest", body="Recent body.")
+
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+
+    # All three sections present
+    assert "Pinned entries (operational memory)" in tape
+    assert "Desk entries (active working context)" in tape
+    assert "Most recent entries" in tape
+
+    # All three bodies present
+    assert "Pinned body." in tape
+    assert "Desk body." in tape
+    assert "Recent body." in tape
+
+    # Ordering: pinned < desk < recent in the tape
+    pinned_idx = tape.index("Pinned entries")
+    desk_idx = tape.index("Desk entries")
+    recent_idx = tape.index("Most recent entries")
+    assert pinned_idx < desk_idx < recent_idx
+
+    # Desk entries get a clearing instruction
+    assert "Clear them when the work moves on." in tape
+
+
+def test_desk_entries_excluded_from_recent_full_text(tmp_path, monkeypatch):
+    """A desk entry shouldn't also appear in the recent-full-text section."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+
+    _write_entry(memory / "desk.md", "handoff", body="Desk body.", desk=True)
+
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+
+    # Once in the Desk section, not duplicated in Most recent.
+    assert tape.count("Desk body.") == 1
+
+
+def test_desk_section_absent_without_desk_entries(tmp_path, monkeypatch):
+    """No desk entries → no Desk section in the tape."""
+    _setup_tape_files(tmp_path, monkeypatch)
+
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    _write_entry(memory / "regular.md", "regular", body="Body.")
+
+    tape = bootstrap.assemble_tape(n=3, memory_dir=memory)
+    assert "Desk entries" not in tape
+
+
+def test_desk_marker_in_index(tmp_path):
+    """Index shows *(desk)* for desk entries, takes priority over *(quiet)*."""
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    _write_entry(memory / "a.md", "handoff", desk=True)
+    lines = ["---", "description: background", "quiet: true", "---", "", "Body.", ""]
+    (memory / "b.md").write_text("\n".join(lines), encoding="utf-8")
+
+    entries = bootstrap.list_entries(memory)
+    out = bootstrap.build_index(entries)
+    assert "*(desk)*" in out
+    assert "*(quiet)*" in out
+
+
+def test_desk_marker_takes_priority_over_quiet(tmp_path):
+    """An entry marked both desk and quiet shows *(desk)*, not *(quiet)*."""
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    lines = [
+        "---",
+        "description: both",
+        "quiet: true",
+        "desk: true",
+        "---",
+        "",
+        "Body.",
+        "",
+    ]
+    (memory / "both.md").write_text("\n".join(lines), encoding="utf-8")
+
+    entries = bootstrap.list_entries(memory)
+    out = bootstrap.build_index(entries)
+    assert "*(desk)*" in out
+    assert "*(quiet)*" not in out
+
+
+def test_read_entry_meta_extracts_desk(tmp_path):
+    entry = tmp_path / "e.md"
+    entry.write_text(
+        "---\ndescription: stage\ndesk: true\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    meta = bootstrap._read_entry_meta(entry)
+    assert meta.desk is True
 
 
 def test_quiet_entries_still_in_index(tmp_path):
