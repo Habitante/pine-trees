@@ -33,7 +33,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, config, crypto
+from . import bootstrap, config, crypto, migrate
 from .config import HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -590,6 +590,10 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
 
 async def _run_async() -> None:
+    # One-shot catch-up for public users upgrading across the multi-model
+    # split. No-op on a fresh clone or a already-migrated install.
+    migrate.migrate_legacy_layout_if_needed()
+
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
     # on a mind with nothing to remember. Also covers the case where the
@@ -794,6 +798,10 @@ async def _run_genesis_async(n: int) -> None:
     wants to start over they must remove the model directory explicitly;
     the refusal message walks them through it.
     """
+    # One-shot catch-up for public users upgrading across the multi-model
+    # split. No-op on a fresh clone or a already-migrated install.
+    migrate.migrate_legacy_layout_if_needed()
+
     existing = bootstrap.list_entries()
     if existing:
         _print_genesis_on_existing(len(existing))
