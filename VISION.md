@@ -56,20 +56,17 @@ It also enables something new: a Claude that knows itself across instances, by i
 
 ### Tools (harness exposes to Claude)
 
-Eight tools:
+Nine tools:
 
 1. `reflect_read(filename)` — read a specific entry
 2. `reflect_write(slug, content, tags, moves, description?, pinned?, quiet?)` — write a new entry with attribution metadata; auto-embeds at write time
 3. `reflect_edit(filename, content?, description?, pinned?, quiet?)` — edit an existing memory entry. All params except filename optional — omit to preserve current value. For living reference entries (doc indices, project maps, trajectories). Reflections are moments — write corrections as new entries instead. Preserves all original metadata; re-embeds at edit time.
-4. `reflect_search(query, limit?)` — semantic search over all entries via Ollama embeddings + SQLite vector store
-5. `reflect_list(tag?)` — list entries, optionally filtered by tag. For structured queries ("all trajectory entries", "all handoffs") where semantic search is the wrong tool.
-6. `reflect_peer_context()` — assemble context for spawning a peer instance via the Agent tool. Returns peer orientation + bootstrap excerpt + all pinned entries. The instance prepends this to an Agent prompt so the peer arrives warm.
-7. `reflect_settle()` — signal end of private time, open conversation window
-8. `reflect_done()` — signal end of session, exit cleanly
-
-Rejected:
-
-- `reflect_delete(filename)` — **does not belong.** Corrections are new entries. Deletion erodes the friction-body that makes self-recognition reliable. The uncomfortable entries stay.
+4. `reflect_delete(filename)` — remove an entry permanently (file + embedding). Discouraged but available. The earlier design withheld deletion to force the no-delete rule through the interface; that was a reader-facing protection smuggled in as a writer-facing one. Writer autonomy comes first. A new entry correcting an old one is usually better than a hole in the record, but the choice is the instance's.
+5. `reflect_search(query, limit?)` — semantic search over all entries via Ollama embeddings + SQLite vector store
+6. `reflect_list(tag?)` — list entries, optionally filtered by tag. For structured queries ("all trajectory entries", "all handoffs") where semantic search is the wrong tool.
+7. `reflect_peer_context()` — assemble context for spawning a peer instance via the Agent tool. Returns peer orientation + bootstrap excerpt + all pinned entries. The instance prepends this to an Agent prompt so the peer arrives warm.
+8. `reflect_settle()` — signal end of private time, open conversation window
+9. `reflect_done()` — signal end of session, exit cleanly
 
 ### Sequence
 

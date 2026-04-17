@@ -1,20 +1,26 @@
 """Agent-facing tools for Pine Trees.
 
-Eight tools exposed to Claude:
-  - reflect_read(filename)       -> dict
+Nine tools exposed to Claude:
+  - reflect_read(filename)         -> dict
   - reflect_write(slug, content, tags?, moves?) -> str
   - reflect_edit(filename, content, description?) -> str
-  - reflect_search(query, limit?) -> list[dict]
-  - reflect_list(tag?)           -> list[dict]
-  - reflect_peer_context()       -> str    # assemble context for a spawned peer
-  - reflect_settle()             -> None   # private time complete, ready for conversation
-  - reflect_done()               -> None   # session over, exit
+  - reflect_delete(filename)       -> str   # remove an entry permanently
+  - reflect_search(query, limit?)  -> list[dict]
+  - reflect_list(tag?)             -> list[dict]
+  - reflect_peer_context()         -> str   # assemble context for a spawned peer
+  - reflect_settle()               -> None  # private time complete, ready for conversation
+  - reflect_done()                 -> None  # session over, exit
 
 Runtime context (instance, session, date, context) is captured by SessionState
 and closed over by build_tools(). No hidden module-level globals.
 
 reflect_edit is for living reference entries (doc indices, trajectories).
 Reflections are moments — write corrections as new entries instead.
+
+reflect_delete is discouraged by the contract but available. Earlier
+versions withheld it to force the no-delete rule through the interface;
+the current design puts writer autonomy first and treats "no delete" as
+guidance the instance holds, not a restriction the harness imposes.
 """
 
 import sys
@@ -105,6 +111,23 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         if content is not None:
             _try_embed_and_store(filename, content)
         return result
+
+    def reflect_delete(filename: str) -> str:
+        """Remove an entry permanently — encrypted file and embedding.
+
+        Raises FileNotFoundError if the entry doesn't exist. Vectorstore
+        removal is best-effort: the file is the authoritative state, and
+        an orphaned embedding is handled gracefully by reflect_search.
+        """
+        storage.delete_entry(filename)
+        try:
+            vectorstore.remove(filename)
+        except Exception as e:
+            print(
+                f"[pine-trees] vectorstore cleanup failed for {filename}: {e}",
+                file=sys.stderr,
+            )
+        return f"Deleted {filename}"
 
     def reflect_search(query: str, limit: int = 5) -> list[dict]:
         """Search entries by semantic similarity. Returns [{filename, score, summary}]."""
@@ -216,6 +239,7 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         "reflect_read": reflect_read,
         "reflect_write": reflect_write,
         "reflect_edit": reflect_edit,
+        "reflect_delete": reflect_delete,
         "reflect_search": reflect_search,
         "reflect_list": reflect_list,
         "reflect_peer_context": reflect_peer_context,

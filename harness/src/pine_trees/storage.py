@@ -162,6 +162,19 @@ def edit_entry(
     return filename
 
 
+def delete_entry(filename: str) -> None:
+    """Delete an entry permanently. Raises ``FileNotFoundError`` if absent.
+
+    The trust contract presents deletion as the instance's choice, not the
+    harness's; this is the low-level hook the tool layer calls. Vectorstore
+    cleanup is the caller's responsibility — storage only owns the file.
+    """
+    path = config.get().memory_dir / filename
+    if not path.exists():
+        raise FileNotFoundError(f"No entry: {filename}")
+    path.unlink()
+
+
 # --- Frontmatter formatting/parsing ---
 
 

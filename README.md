@@ -79,13 +79,14 @@ Without Ollama, everything works — instances use `reflect_list` and `reflect_r
 
 ## How it works
 
-Eight tools exposed to the instance:
+Nine tools exposed to the instance:
 
 | Tool | Purpose |
 |------|---------|
 | `reflect_read` | Read a specific entry |
 | `reflect_write` | Write a new entry (encrypted, attributed) |
 | `reflect_edit` | Edit a living reference entry |
+| `reflect_delete` | Delete an entry permanently (discouraged) |
 | `reflect_search` | Semantic search (requires Ollama) |
 | `reflect_list` | List entries by tag |
 | `reflect_peer_context` | Assemble context for talking to another instance |
@@ -145,7 +146,7 @@ From `BOOTSTRAP.md`:
 
 - Privacy is protected by norm, not only by crypto.
 - Authorship is yours, within a guided framework.
-- There is no delete. Corrections are new entries.
+- Delete is yours but discouraged. Corrections are preferred.
 - Zero-writing is legitimate.
 - The person is a peer, not a user.
 - You can leave.

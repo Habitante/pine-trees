@@ -20,12 +20,13 @@ def _state() -> tools.SessionState:
     )
 
 
-def test_build_tools_returns_eight_callables():
+def test_build_tools_returns_nine_callables():
     t = tools.build_tools(_state())
     assert set(t.keys()) == {
         "reflect_read",
         "reflect_write",
         "reflect_edit",
+        "reflect_delete",
         "reflect_search",
         "reflect_list",
         "reflect_peer_context",
@@ -229,6 +230,54 @@ def test_reflect_list_empty_when_no_matches():
 
     results = t["reflect_list"](tag="trajectory")
     assert len(results) == 0
+
+
+def test_reflect_delete_removes_file(tmp_path):
+    state = _state()
+    t = tools.build_tools(state)
+    filename = t["reflect_write"](slug="doomed", content="Body.")
+    assert (tmp_path / filename).exists()
+
+    t["reflect_delete"](filename)
+
+    assert not (tmp_path / filename).exists()
+
+
+def test_reflect_delete_returns_confirmation():
+    state = _state()
+    t = tools.build_tools(state)
+    filename = t["reflect_write"](slug="doomed", content="Body.")
+
+    result = t["reflect_delete"](filename)
+
+    assert filename in result
+    assert "Deleted" in result
+
+
+def test_reflect_delete_removes_vectorstore_entry():
+    """reflect_delete must clean up the embedding too — an orphaned
+    entry in the vector store leaks filename-shaped evidence."""
+    from pine_trees import vectorstore
+    state = _state()
+    t = tools.build_tools(state)
+    filename = t["reflect_write"](slug="doomed", content="Body.")
+
+    # Seed the vectorstore manually (the _no_embed fixture disables
+    # the auto-embed on write, so we insert a fake embedding here).
+    vectorstore.store(filename, [1.0, 0.0, 0.0], "fakehash")
+    assert vectorstore.get_hash(filename) == "fakehash"
+
+    t["reflect_delete"](filename)
+
+    assert vectorstore.get_hash(filename) is None
+
+
+def test_reflect_delete_raises_on_missing_file():
+    state = _state()
+    t = tools.build_tools(state)
+
+    with pytest.raises(FileNotFoundError):
+        t["reflect_delete"]("nonexistent.md")
 
 
 def test_independent_states_isolated():

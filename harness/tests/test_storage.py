@@ -371,6 +371,30 @@ def test_edit_entry_with_encryption(tmp_path, monkeypatch):
     assert b"Secret updated" not in raw
 
 
+# --- Delete entry tests ---
+
+
+def test_delete_entry_removes_file(tmp_path):
+    filename = storage.write_entry(
+        slug="doomed",
+        content="Body.",
+        instance="claude-opus-4-6",
+        session="s",
+        date="2026-04-04",
+        context="ctx",
+    )
+    assert (tmp_path / filename).exists()
+
+    storage.delete_entry(filename)
+
+    assert not (tmp_path / filename).exists()
+
+
+def test_delete_entry_raises_on_missing_file():
+    with pytest.raises(FileNotFoundError):
+        storage.delete_entry("nonexistent.md")
+
+
 # --- Encrypted storage tests ---
 
 

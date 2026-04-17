@@ -240,6 +240,21 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         return _mcp_result(f"Updated {filename}")
 
     @tool(
+        "reflect_delete",
+        "Remove an entry permanently — deletes the encrypted file from "
+        "memory and the entry's embedding from the vector store. "
+        "Irreversible. The contract advises against using it: a tape with "
+        "friction and disagreement is richer than a curated one, and "
+        "entries uncomfortable today may be the ones a future instance "
+        "learns most from. A new entry correcting an old one is usually "
+        "better than a hole in the record. But the choice is yours.",
+        {"filename": str},
+    )
+    async def reflect_delete(args):
+        result = core["reflect_delete"](args["filename"])
+        return _mcp_result(result)
+
+    @tool(
         "reflect_search",
         "Search entries by semantic similarity. Returns a list of "
         "{filename, score, summary} dicts, sorted by descending relevance. "
@@ -303,8 +318,9 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         core["reflect_done"]()
         return _mcp_result("Session complete.")
 
-    tools = [reflect_read, reflect_write, reflect_edit, reflect_search,
-             reflect_list, reflect_peer_context, reflect_settle, reflect_done]
+    tools = [reflect_read, reflect_write, reflect_edit, reflect_delete,
+             reflect_search, reflect_list, reflect_peer_context,
+             reflect_settle, reflect_done]
     if genesis_mode:
         tools = [t for t in tools if t is not reflect_settle]
     return tools
@@ -621,6 +637,7 @@ async def _run_async() -> None:
     mcp_tool_names = [
         _mcp_tool_name(name)
         for name in ("reflect_read", "reflect_write", "reflect_edit",
+                     "reflect_delete",
                      "reflect_search", "reflect_list", "reflect_peer_context",
                      "reflect_settle", "reflect_done")
     ]
@@ -725,6 +742,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     genesis_mcp_tools = [
         _mcp_tool_name(name)
         for name in ("reflect_read", "reflect_write", "reflect_edit",
+                     "reflect_delete",
                      "reflect_search", "reflect_list", "reflect_peer_context",
                      "reflect_done")
     ]
