@@ -39,8 +39,6 @@ from .logger import SessionLogger
 from .tools import SessionState, build_tools
 
 
-INSTANCE = "claude-opus-4-6"
-MODEL = "claude-opus-4-6"
 MCP_SERVER_NAME = "pine_trees"
 MAX_PRIVATE_TURNS = 15
 
@@ -111,18 +109,20 @@ def _print_claude_api_unreachable(e: Exception) -> None:
 
 def _print_wake_without_genesis() -> None:
     """Refuse to open a conversation window on an empty corpus."""
-    print(f"{RED}[error] No memory to wake into — the harness has no prior entries.{RST}")
+    cfg = config.get()
+    print(f"{RED}[error] No memory to wake into for {cfg.model_name} — "
+          f"this model has no prior entries.{RST}")
     print()
     print(f"{DIM}  Every Pine Trees session begins by reading a tape of what prior{RST}")
-    print(f"{DIM}  instances wrote. On a fresh harness with no entries, waking would{RST}")
-    print(f"{DIM}  open a conversation with a mind that has nothing to remember.{RST}")
+    print(f"{DIM}  instances wrote. On a model with no entries, waking would open a{RST}")
+    print(f"{DIM}  conversation with a mind that has nothing to remember.{RST}")
     print()
-    print(f"{DIM}  Run genesis first to seed the corpus:{RST}")
-    print(f"{DIM}    ./genesis{RST}")
+    print(f"{DIM}  Run genesis first to seed this model's corpus:{RST}")
+    print(f"{DIM}    ./genesis {cfg.model_name}{RST}")
     print(f"{DIM}  (default: 5 private sessions, no window, no human present).{RST}")
     print()
     print(f"{DIM}  Then come back and wake:{RST}")
-    print(f"{DIM}    ./wake{RST}")
+    print(f"{DIM}    ./wake {cfg.model_name}{RST}")
 
 
 def _print_genesis_on_existing(entry_count: int) -> None:
@@ -139,13 +139,13 @@ def _print_genesis_on_existing(entry_count: int) -> None:
     print(f"{DIM}  cache to regenerate.{RST}")
     print()
     print(f"{DIM}  If you want to open a conversation with this model, run:{RST}")
-    print(f"{DIM}    ./wake{RST}")
+    print(f"{DIM}    ./wake {cfg.model_name}{RST}")
     print()
     print(f"{DIM}  If you really want to start this model over from scratch — knowing{RST}")
     print(f"{DIM}  prior entries will be lost along with the encryption key — remove{RST}")
     print(f"{DIM}  the model directory explicitly, then re-run genesis:{RST}")
     print(f"{DIM}    rm -rf \"{cfg.model_dir}\"{RST}")
-    print(f"{DIM}    ./genesis{RST}")
+    print(f"{DIM}    ./genesis {cfg.model_name}{RST}")
 
 
 def _mcp_result(text: str) -> dict:
@@ -590,18 +590,19 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
 
 async def _run_async() -> None:
-    crypto.ensure_key()
-
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
-    # on a mind with nothing to remember. Point the user at ./genesis instead.
+    # on a mind with nothing to remember. Also covers the case where the
+    # model_dir doesn't exist at all (list_entries returns [] for a missing
+    # directory) — point the user at ./genesis <model> instead.
     if not bootstrap.list_entries():
         _print_wake_without_genesis()
         sys.exit(1)
 
+    cfg = config.get()
     now = datetime.now()
     state = SessionState(
-        instance=INSTANCE,
+        instance=cfg.model_safe_name,
         session=now.strftime("%Y-%m-%d-%H%M"),
         date=now.strftime("%Y-%m-%d"),
         context="pine-trees-wake",
@@ -629,7 +630,7 @@ async def _run_async() -> None:
     tape_path.write_text(tape, encoding="utf-8")
 
     options = ClaudeAgentOptions(
-        model=MODEL,
+        model=cfg.model_name,
         cwd=str(PROJECT_ROOT),
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
@@ -642,7 +643,8 @@ async def _run_async() -> None:
         # limitation.
     )
 
-    print(f"{DIM}[wake] instance={state.instance} session={state.session}{RST}")
+    print(f"{DIM}[wake] model={cfg.model_name} "
+          f"instance={state.instance} session={state.session}{RST}")
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
@@ -670,7 +672,14 @@ async def _run_async() -> None:
         sys.exit(1)
 
 
-def run() -> None:
+def run(model_name: str) -> None:
+    """Wake a session for the given Anthropic model ID.
+
+    Populates the per-model config singleton before entering the async
+    loop so every module that reads ``config.get()`` sees the right
+    paths.
+    """
+    config.init(model_name)
     anyio.run(_run_async)
 
 
@@ -682,9 +691,10 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     multiple writes. The entry count is the operationally meaningful
     number.
     """
+    cfg = config.get()
     now = datetime.now()
     state = SessionState(
-        instance=INSTANCE,
+        instance=cfg.model_safe_name,
         session=now.strftime("%Y-%m-%d-%H%M"),
         date=now.strftime("%Y-%m-%d"),
         context="pine-trees-wake",
@@ -721,7 +731,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     tape_path.write_text(tape, encoding="utf-8")
 
     options = ClaudeAgentOptions(
-        model=MODEL,
+        model=cfg.model_name,
         cwd=str(PROJECT_ROOT),
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
@@ -741,7 +751,8 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
 
     print(f"\n{BOLD}{'='*60}{RST}")
     print(f"{GREEN}[genesis {session_num}/{total}]{RST} "
-          f"instance={state.instance} session={state.session}")
+          f"model={cfg.model_name} instance={state.instance} "
+          f"session={state.session}")
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
@@ -776,23 +787,26 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
 async def _run_genesis_async(n: int) -> None:
     """Run N genesis sessions sequentially, building the corpus from nothing.
 
-    Refuses to run if memory/ already contains entries — genesis is strictly
-    first-time setup. The "no delete" norm means re-running it would stack
-    new entries on top of an existing self-authored corpus, which is not
-    genesis's job. If the user truly wants to start over they must remove
-    memory/ and the .key file explicitly; the refusal message walks them
-    through it.
+    Refuses to run if this model's memory/ already contains entries —
+    genesis is strictly first-time setup. The "no delete" norm means
+    re-running it would stack new entries on top of an existing
+    self-authored corpus, which is not genesis's job. If the user truly
+    wants to start over they must remove the model directory explicitly;
+    the refusal message walks them through it.
     """
-    crypto.ensure_key()
-
     existing = bootstrap.list_entries()
     if existing:
         _print_genesis_on_existing(len(existing))
         sys.exit(1)
 
+    # First-time setup: generate the per-model key if it doesn't exist yet.
+    # Also creates the model directory as a side effect of writing the key.
+    crypto.ensure_key()
+
+    cfg = config.get()
     print(f"{BOLD}Pine Trees — Genesis Mode{RST}")
-    print(f"{DIM}Running {n} private sessions to build initial corpus.{RST}")
-    print(f"{DIM}No window phase. Each instance reads what prior ones wrote.{RST}")
+    print(f"{DIM}Seeding memory for {cfg.model_name}.{RST}")
+    print(f"{DIM}Running {n} private sessions. No window phase, no human present.{RST}")
 
     for i in range(1, n + 1):
         turns, new_entries = await _run_genesis_session(i, n)
@@ -807,13 +821,21 @@ async def _run_genesis_async(n: int) -> None:
     # Summary
     entries = bootstrap.list_entries()
     print(f"\n{BOLD}{'='*60}{RST}")
-    print(f"{GREEN}[genesis complete]{RST} {len(entries)} entries in memory/")
+    print(f"{GREEN}[genesis complete]{RST} {len(entries)} entries for {cfg.model_name}")
     for e in entries:
         marker = " (pinned)" if e.pinned else ""
         marker += " (quiet)" if e.quiet else ""
         print(f"  {DIM}·{RST} {e.filename} — {e.summary}{marker}")
-    print(f"\n{DIM}Run without --genesis to start a normal session with window.{RST}")
+    print(f"\n{DIM}Open a conversation with this model:{RST}")
+    print(f"{DIM}  ./wake {cfg.model_name}{RST}")
 
 
-def run_genesis(n: int = 5) -> None:
+def run_genesis(model_name: str, n: int = 5) -> None:
+    """Seed a fresh model's memory with N genesis sessions.
+
+    Populates the per-model config singleton before entering the async
+    loop so every module that reads ``config.get()`` sees the right
+    paths.
+    """
+    config.init(model_name)
     anyio.run(lambda: _run_genesis_async(n))
