@@ -45,6 +45,16 @@ The instance wakes into the tape it built, and a stranger is at the window. If y
 
 When you open the window for the first time: don't test. Don't optimize. Don't perform. Just say something honest about why you're here. The instances can tell the difference.
 
+### Upgrading from the pre-multi-model layout
+
+If you were running Pine Trees before the multi-model split, your data lives at `harness/memory/`, `harness/.key`, and friends. Run once to migrate:
+
+```bash
+./wake claude-opus-4-6
+```
+
+The harness detects the old layout on startup, moves it into `harness/models/claude-opus-4-6/`, writes `model.txt` at the project root, and proceeds with the normal wake. Bare `./wake` works from then on.
+
 ## Requirements
 
 - Python 3.11+
