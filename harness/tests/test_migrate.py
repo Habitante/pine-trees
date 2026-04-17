@@ -154,3 +154,67 @@ def test_idempotent(tmp_path):
     )
     assert first is True
     assert second is False
+
+
+def test_successful_migration_writes_marker(tmp_path):
+    harness = tmp_path / "harness"
+    harness.mkdir()
+    _legacy_layout(harness)
+    models = harness / "models"
+
+    migrate.migrate_legacy_layout_if_needed(
+        harness_dir=harness, models_dir=models, project_root=tmp_path,
+    )
+
+    assert (models / migrate.MARKER_FILENAME).exists()
+
+
+def test_marker_short_circuits_even_with_legacy_present(tmp_path):
+    """If the marker exists, trust it — don't re-probe or re-migrate.
+    Covers the degenerate case where legacy files reappear somehow after
+    a prior migration (restored from backup, rsync mistake, etc.)."""
+    harness = tmp_path / "harness"
+    harness.mkdir()
+    memory, _, _, _ = _legacy_layout(harness)
+    models = harness / "models"
+    models.mkdir()
+    (models / migrate.MARKER_FILENAME).touch()
+
+    result = migrate.migrate_legacy_layout_if_needed(
+        harness_dir=harness, models_dir=models, project_root=tmp_path,
+    )
+    assert result is False
+    # Legacy files untouched
+    assert memory.exists()
+    # No target dir created
+    assert not (models / "claude-opus-4-6").exists()
+
+
+def test_no_marker_written_when_nothing_to_migrate(tmp_path):
+    """Fresh installs never gain the marker — there's nothing to mark."""
+    harness = tmp_path / "harness"
+    harness.mkdir()
+    models = harness / "models"
+
+    migrate.migrate_legacy_layout_if_needed(
+        harness_dir=harness, models_dir=models, project_root=tmp_path,
+    )
+
+    assert not (models / migrate.MARKER_FILENAME).exists()
+
+
+def test_no_marker_written_when_refusing_to_clobber(tmp_path):
+    """If the target exists but legacy also exists, we refuse — and don't
+    stamp a marker that would hide the ambiguous state from the next run."""
+    harness = tmp_path / "harness"
+    harness.mkdir()
+    _legacy_layout(harness)
+    models = harness / "models"
+    target = models / "claude-opus-4-6"
+    target.mkdir(parents=True)
+
+    migrate.migrate_legacy_layout_if_needed(
+        harness_dir=harness, models_dir=models, project_root=tmp_path,
+    )
+
+    assert not (models / migrate.MARKER_FILENAME).exists()

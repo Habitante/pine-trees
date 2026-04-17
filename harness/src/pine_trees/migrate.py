@@ -17,6 +17,7 @@ from . import config
 
 
 LEGACY_MODEL = "claude-opus-4-6"
+MARKER_FILENAME = ".migrated"
 
 
 def migrate_legacy_layout_if_needed(
@@ -29,10 +30,21 @@ def migrate_legacy_layout_if_needed(
     Returns True if migration ran, False if the layout was already
     current. Paths default to ``config`` module constants but can be
     overridden in tests.
+
+    After a successful migration, writes ``models/.migrated`` so
+    subsequent startups short-circuit with one stat call instead of
+    re-probing the legacy locations. The marker makes this module a
+    clean removal target: delete ``migrate.py``, drop the call site
+    in ``agent.py``, and installs with the marker will never look
+    again either way.
     """
     harness_dir = harness_dir or config.HARNESS_DIR
     models_dir = models_dir or config.MODELS_DIR
     project_root = project_root or config.PROJECT_ROOT
+
+    marker = models_dir / MARKER_FILENAME
+    if marker.exists():
+        return False
 
     sources = [
         (harness_dir / "memory", "memory"),
@@ -58,6 +70,11 @@ def migrate_legacy_layout_if_needed(
     model_txt = project_root / "model.txt"
     if not model_txt.exists():
         model_txt.write_text(f"{LEGACY_MODEL}\n", encoding="utf-8")
+
+    # Drop the marker so future startups skip the probe. Must come after
+    # the move so a crash mid-migration doesn't leave a marker pointing
+    # at half-moved data.
+    marker.touch()
 
     print(
         f"[migrate] moved legacy layout into {target}: {', '.join(moved)}",
