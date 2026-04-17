@@ -2,11 +2,17 @@
 
 Covers ``sanitize_model_name``, ``init``/``get``/``reset``, and the shape
 of the resolved ``Config`` dataclass.
+
+These tests exercise the lifecycle of the singleton itself, so they opt
+out of the autouse fixture that every other test relies on.
 """
 
 import pytest
 
 from pine_trees import config
+
+
+pytestmark = pytest.mark.no_autoconfig
 
 
 @pytest.fixture(autouse=True)

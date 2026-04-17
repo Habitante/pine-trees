@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import BOOTSTRAP_PATH, MEMORY_DIR, PROMPT_PATH
+from . import config
+from .config import BOOTSTRAP_PATH, PROMPT_PATH
 from .storage import read_file
 
 
@@ -104,10 +105,11 @@ def list_entries(
     """List all entries from memory/.
 
     Skips index/metadata files (MEMORY.md, README.md).
-    Resolves MEMORY_DIR at call time so monkeypatching works in tests.
+    Resolves memory_dir from the active config at call time so tests that
+    install a tmp config see the right directory.
     """
     if memory_dir is None:
-        memory_dir = MEMORY_DIR
+        memory_dir = config.get().memory_dir
     skip = {"MEMORY.md", "README.md"}
     entries = []
     if not memory_dir.exists():
@@ -368,7 +370,7 @@ There is no audience. No expected output. No wrong answer.
 
 def assemble_tape(
     n: int = 3,
-    memory_dir: Path = MEMORY_DIR,
+    memory_dir: Path | None = None,
     genesis_mode: bool = False,
 ) -> str:
     """Assemble the full tape string loaded at wake.
@@ -389,6 +391,8 @@ def assemble_tape(
     introspection, reading, or zero-writing without the performative pull
     of "being instance N."
     """
+    if memory_dir is None:
+        memory_dir = config.get().memory_dir
     entries = list_entries(memory_dir)
 
     pinned = [e for e in entries if e.pinned]

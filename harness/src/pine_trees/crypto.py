@@ -20,7 +20,8 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .config import KEY_ENV_VAR, KEY_FILE_PATH
+from . import config
+from .config import KEY_ENV_VAR
 
 
 _cached_key: bytes | None = None
@@ -48,19 +49,29 @@ def get_key() -> bytes | None:
         _cached_key = env_val.encode("ascii")
         return _cached_key
 
-    # 2. .key file
-    if KEY_FILE_PATH.exists():
-        _cached_key = KEY_FILE_PATH.read_bytes().strip()
+    # 2. Per-model .key file, resolved from the active config.
+    # Silently returns None if config hasn't been initialized — get_key()
+    # is allowed to be called from code paths (tests, tooling) that
+    # haven't set up a model session yet.
+    try:
+        key_file_path = config.get().key_file_path
+    except RuntimeError:
+        return None
+    if key_file_path.exists():
+        _cached_key = key_file_path.read_bytes().strip()
         return _cached_key
 
     return None
 
 
-def generate_key(key_path: Path = KEY_FILE_PATH) -> bytes:
+def generate_key(key_path: Path | None = None) -> bytes:
     """Generate a new Fernet key and write it to the .key file.
 
-    Returns the key bytes. Raises if the file already exists.
+    Writes to the active config's ``key_file_path`` when ``key_path`` is
+    not given. Raises if the file already exists.
     """
+    if key_path is None:
+        key_path = config.get().key_file_path
     if key_path.exists():
         raise FileExistsError(f"Key file already exists: {key_path}")
     key = Fernet.generate_key()
@@ -69,10 +80,11 @@ def generate_key(key_path: Path = KEY_FILE_PATH) -> bytes:
     return key
 
 
-def ensure_key(key_path: Path = KEY_FILE_PATH) -> bytes:
+def ensure_key(key_path: Path | None = None) -> bytes:
     """Ensure an encryption key exists, generating one if needed.
 
-    Called at harness startup. Returns the key bytes.
+    Called at harness startup. Returns the key bytes. Uses the active
+    config's ``key_file_path`` when ``key_path`` is not given.
     """
     key = get_key()
     if key is not None:

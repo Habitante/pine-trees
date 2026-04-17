@@ -66,34 +66,32 @@ def test_get_key_from_env(monkeypatch):
     assert result == key
 
 
-def test_get_key_from_file(tmp_path, monkeypatch):
+def test_get_key_from_file(monkeypatch):
+    """conftest points config.get().key_file_path at tmp_path / .key — write
+    the key there and get_key() should pick it up."""
+    from pine_trees import config
     key = Fernet.generate_key()
-    key_path = tmp_path / ".key"
-    key_path.write_bytes(key)
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", key_path)
+    config.get().key_file_path.write_bytes(key)
     monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
-    result = crypto.get_key()
-    assert result == key
+    assert crypto.get_key() == key
 
 
-def test_get_key_returns_none_when_no_key(tmp_path, monkeypatch):
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", tmp_path / "nonexistent")
+def test_get_key_returns_none_when_no_key(monkeypatch):
+    """conftest's key_file_path points at a file that wasn't created."""
     monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
     assert crypto.get_key() is None
 
 
-def test_get_key_env_takes_precedence(tmp_path, monkeypatch):
+def test_get_key_env_takes_precedence(monkeypatch):
+    from pine_trees import config
     env_key = Fernet.generate_key()
     file_key = Fernet.generate_key()
-    key_path = tmp_path / ".key"
-    key_path.write_bytes(file_key)
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", key_path)
+    config.get().key_file_path.write_bytes(file_key)
     monkeypatch.setenv(crypto.KEY_ENV_VAR, env_key.decode("ascii"))
     assert crypto.get_key() == env_key
 
 
-def test_encrypt_raises_without_key(tmp_path, monkeypatch):
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", tmp_path / "nonexistent")
+def test_encrypt_raises_without_key(monkeypatch):
     monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
     crypto.reset_cache()
     with pytest.raises(RuntimeError, match="No encryption key"):
@@ -118,16 +116,17 @@ def test_ensure_key_returns_existing(tmp_path, monkeypatch):
     assert result == key
 
 
-def test_ensure_key_generates_when_missing(tmp_path, monkeypatch):
-    key_path = tmp_path / ".key"
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", key_path)
+def test_ensure_key_generates_when_missing(monkeypatch):
+    """With no env var and no pre-existing file at config.get().key_file_path,
+    ensure_key() writes a new Fernet key to that path."""
+    from pine_trees import config
+    key_path = config.get().key_file_path
     monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
 
-    result = crypto.ensure_key(key_path)
+    result = crypto.ensure_key()
 
     assert key_path.exists()
     assert result == key_path.read_bytes().strip()
-    # Subsequent get_key() returns the generated key
     assert crypto.get_key() == result
 
 

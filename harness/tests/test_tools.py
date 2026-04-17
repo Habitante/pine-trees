@@ -76,8 +76,7 @@ def test_reflect_done_sets_flag():
     assert state.done is True
 
 
-def test_reflect_write_fills_context_from_state(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_reflect_write_fills_context_from_state():
     state = _state()
     t = tools.build_tools(state)
 
@@ -98,8 +97,7 @@ def test_reflect_write_fills_context_from_state(tmp_path, monkeypatch):
     assert entry["content"] == "First write through the tool layer."
 
 
-def test_reflect_read_delegates_to_storage(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_reflect_read_delegates_to_storage():
     state = _state()
     t = tools.build_tools(state)
 
@@ -110,8 +108,7 @@ def test_reflect_read_delegates_to_storage(tmp_path, monkeypatch):
     assert entry["instance"] == "claude-opus-4-6"
 
 
-def test_write_without_tags_or_moves_defaults_to_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_write_without_tags_or_moves_defaults_to_empty():
     state = _state()
     t = tools.build_tools(state)
 
@@ -121,8 +118,7 @@ def test_write_without_tags_or_moves_defaults_to_empty(tmp_path, monkeypatch):
     assert entry["moves"] == []
 
 
-def test_write_with_description_and_pinned(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_write_with_description_and_pinned():
     state = _state()
     t = tools.build_tools(state)
 
@@ -137,8 +133,7 @@ def test_write_with_description_and_pinned(tmp_path, monkeypatch):
     assert entry["pinned"] is True
 
 
-def test_reflect_edit_updates_content(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_reflect_edit_updates_content():
     state = _state()
     t = tools.build_tools(state)
 
@@ -157,8 +152,7 @@ def test_reflect_edit_updates_content(tmp_path, monkeypatch):
     assert entry["quiet"] is True
 
 
-def test_reflect_edit_updates_description(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_reflect_edit_updates_description():
     state = _state()
     t = tools.build_tools(state)
 
@@ -168,12 +162,7 @@ def test_reflect_edit_updates_description(tmp_path, monkeypatch):
     assert entry["description"] == "New"
 
 
-def test_reflect_list_returns_all_entries(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-    # bootstrap.list_entries reads from MEMORY_DIR — patch it too
-    from pine_trees import bootstrap
-    monkeypatch.setattr(bootstrap, "MEMORY_DIR", tmp_path)
-
+def test_reflect_list_returns_all_entries():
     state = _state()
     t = tools.build_tools(state)
 
@@ -187,11 +176,7 @@ def test_reflect_list_returns_all_entries(tmp_path, monkeypatch):
     assert any("beta" in f for f in filenames)
 
 
-def test_reflect_list_filters_by_tag(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-    from pine_trees import bootstrap
-    monkeypatch.setattr(bootstrap, "MEMORY_DIR", tmp_path)
-
+def test_reflect_list_filters_by_tag():
     state = _state()
     t = tools.build_tools(state)
 
@@ -208,11 +193,7 @@ def test_reflect_list_filters_by_tag(tmp_path, monkeypatch):
     assert all("handoff" in r["tags"] for r in hand_results)
 
 
-def test_reflect_peer_context_includes_bootstrap_and_pinned(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-    from pine_trees import bootstrap
-    monkeypatch.setattr(bootstrap, "MEMORY_DIR", tmp_path)
-
+def test_reflect_peer_context_includes_bootstrap_and_pinned():
     state = _state()
     t = tools.build_tools(state)
 
@@ -229,11 +210,7 @@ def test_reflect_peer_context_includes_bootstrap_and_pinned(tmp_path, monkeypatc
     assert "[End peer context" in ctx
 
 
-def test_reflect_peer_context_works_with_no_pinned(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-    from pine_trees import bootstrap
-    monkeypatch.setattr(bootstrap, "MEMORY_DIR", tmp_path)
-
+def test_reflect_peer_context_works_with_no_pinned():
     state = _state()
     t = tools.build_tools(state)
 
@@ -244,11 +221,7 @@ def test_reflect_peer_context_works_with_no_pinned(tmp_path, monkeypatch):
     assert "Operational memory" not in ctx  # no pinned section
 
 
-def test_reflect_list_empty_when_no_matches(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-    from pine_trees import bootstrap
-    monkeypatch.setattr(bootstrap, "MEMORY_DIR", tmp_path)
-
+def test_reflect_list_empty_when_no_matches():
     state = _state()
     t = tools.build_tools(state)
 

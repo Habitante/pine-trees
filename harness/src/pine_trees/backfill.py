@@ -10,18 +10,19 @@ Usage:
 import sys
 from pathlib import Path
 
-from . import storage, embedder, vectorstore
-from .config import MEMORY_DIR
+from . import config, storage, embedder, vectorstore
 
 
 def backfill(
-    memory_dir: Path = MEMORY_DIR,
+    memory_dir: Path | None = None,
     verbose: bool = True,
 ) -> dict:
     """Embed all entries not yet in the vector store.
 
     Returns {embedded: int, skipped: int, failed: int}.
     """
+    if memory_dir is None:
+        memory_dir = config.get().memory_dir
     skip_names = {"MEMORY.md", "README.md"}
     stats = {"embedded": 0, "skipped": 0, "failed": 0}
 
@@ -65,11 +66,12 @@ def backfill(
 
 
 def main() -> None:
+    memory_dir = config.get().memory_dir
     print("Pine Trees — backfill embeddings")
-    print(f"  memory: {MEMORY_DIR}")
+    print(f"  memory: {memory_dir}")
     print()
 
-    stats = backfill()
+    stats = backfill(memory_dir)
 
     print()
     print(f"Done. embedded={stats['embedded']} skipped={stats['skipped']} failed={stats['failed']}")

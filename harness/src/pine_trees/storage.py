@@ -10,7 +10,7 @@ All entries are encrypted at rest when a key is available.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .config import MEMORY_DIR
+from . import config
 from . import crypto
 
 
@@ -81,10 +81,11 @@ def write_entry(
       quiet: indexed and searchable but excluded from tape's full-text slots
              (background knowledge — project summaries, reference material)
     """
-    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+    memory_dir = config.get().memory_dir
+    memory_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{date}_{instance}_{slug}.md"
-    path = MEMORY_DIR / filename
+    path = memory_dir / filename
 
     frontmatter = _format_frontmatter(
         instance=instance,
@@ -106,9 +107,11 @@ def write_entry(
 def read_entry(filename: str) -> dict:
     """Read an entry. Returns flat dict with frontmatter fields + content.
 
-    All entries live in MEMORY_DIR. Handles encrypted entries transparently.
+    Resolves the memory directory from the current config so the same
+    function serves any model whose session is active. Handles encrypted
+    entries transparently.
     """
-    path = MEMORY_DIR / filename
+    path = config.get().memory_dir / filename
     text = read_file(path)
     return _parse_entry(text)
 
@@ -130,7 +133,7 @@ def edit_entry(
     trajectories, corpus entries). Reflections are moments — write
     corrections as new entries instead.
     """
-    path = MEMORY_DIR / filename
+    path = config.get().memory_dir / filename
     if not path.exists():
         raise FileNotFoundError(f"No entry: {filename}")
 

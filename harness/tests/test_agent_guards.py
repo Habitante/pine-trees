@@ -79,14 +79,16 @@ class TestPrintWakeWithoutGenesis:
 
 class TestPrintGenesisOnExisting:
     def test_mentions_count_and_rm_path(self, capsys):
-        from pine_trees.config import KEY_FILE_PATH, MEMORY_DIR
+        from pine_trees import config
+        cfg = config.get()
         agent._print_genesis_on_existing(42)
         out = capsys.readouterr().out
         assert "42 entries" in out
         assert "./wake" in out
         assert "rm -rf" in out
-        assert str(MEMORY_DIR) in out
-        assert str(KEY_FILE_PATH) in out
+        # With per-model isolation, the rm target is the whole model dir —
+        # memory_dir and key_file_path both live under it.
+        assert str(cfg.model_dir) in out
         assert "./genesis" in out
         assert "no delete" in out.lower()
 
@@ -239,10 +241,9 @@ class TestWelcomeMessageIsLoggedWithoutCrashing:
     AttributeError instead of a runtime crash on the next `./wake`.
     """
 
-    def test_log_agent_accepts_welcome_message_text(self, tmp_path, monkeypatch):
-        from pine_trees import logger as logger_mod
-        monkeypatch.setattr(logger_mod, "LOGS_DIR", tmp_path)
-
+    def test_log_agent_accepts_welcome_message_text(self, tmp_path):
+        # conftest's _test_config fixture points config.get().logs_dir at
+        # tmp_path, so SessionLogger writes here without further setup.
         log = SessionLogger(session="test-session", instance="test-instance")
         try:
             # This is the exact call _window_phase makes when welcome_message

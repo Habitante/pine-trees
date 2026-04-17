@@ -1,4 +1,11 @@
-"""Round-trip tests for storage.py."""
+"""Round-trip tests for storage.py.
+
+The conftest.py ``_test_config`` fixture wires ``config.get().memory_dir``
+to a per-test ``tmp_path``, so ``storage`` writes land there without the
+tests needing to know. The ``_no_encryption`` fixture here layers on top,
+clearing the key cache and the env var so tests default to plaintext
+unless they opt into encryption explicitly.
+"""
 
 import pytest
 from cryptography.fernet import Fernet
@@ -8,17 +15,18 @@ from pine_trees import crypto, storage
 
 @pytest.fixture(autouse=True)
 def _no_encryption(monkeypatch):
-    """Disable encryption by default so existing tests stay unchanged."""
+    """Disable encryption by default so existing tests stay unchanged.
+
+    The conftest fixture already points ``key_file_path`` at a nonexistent
+    file under ``tmp_path`` — no further redirection needed.
+    """
     crypto.reset_cache()
     monkeypatch.delenv(crypto.KEY_ENV_VAR, raising=False)
-    monkeypatch.setattr(crypto, "KEY_FILE_PATH", storage.MEMORY_DIR / "nonexistent")
     yield
     crypto.reset_cache()
 
 
-def test_write_read_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
-
+def test_write_read_roundtrip(tmp_path):
     filename = storage.write_entry(
         slug="test-entry",
         content="This is the body.\n\nSecond paragraph.",
@@ -43,8 +51,7 @@ def test_write_read_roundtrip(tmp_path, monkeypatch):
     assert entry["content"] == "This is the body.\n\nSecond paragraph."
 
 
-def test_description_and_pinned_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_description_and_pinned_roundtrip():
 
     filename = storage.write_entry(
         slug="described",
@@ -63,8 +70,7 @@ def test_description_and_pinned_roundtrip(tmp_path, monkeypatch):
     assert entry["content"] == "Body."
 
 
-def test_description_and_pinned_omitted_when_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_description_and_pinned_omitted_when_empty(tmp_path):
 
     filename = storage.write_entry(
         slug="bare",
@@ -80,8 +86,7 @@ def test_description_and_pinned_omitted_when_empty(tmp_path, monkeypatch):
     assert "pinned:" not in disk_text
 
 
-def test_empty_tags_and_moves(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_empty_tags_and_moves():
 
     filename = storage.write_entry(
         slug="minimal",
@@ -98,8 +103,7 @@ def test_empty_tags_and_moves(tmp_path, monkeypatch):
     assert entry["content"] == "Body."
 
 
-def test_multiline_content_preserved(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_multiline_content_preserved():
 
     body = "# Heading\n\nParagraph one.\n\nParagraph two with *emphasis*.\n"
     filename = storage.write_entry(
@@ -117,15 +121,13 @@ def test_multiline_content_preserved(tmp_path, monkeypatch):
     assert entry["content"] == body
 
 
-def test_read_entry_raises_on_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_read_entry_raises_on_missing_file():
 
     with pytest.raises(FileNotFoundError):
         storage.read_entry("nonexistent.md")
 
 
-def test_file_on_disk_is_plain_markdown(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_file_on_disk_is_plain_markdown(tmp_path):
 
     filename = storage.write_entry(
         slug="plain",
@@ -142,8 +144,7 @@ def test_file_on_disk_is_plain_markdown(tmp_path, monkeypatch):
     assert "Hello." in disk_text
 
 
-def test_quiet_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_quiet_roundtrip():
 
     filename = storage.write_entry(
         slug="background",
@@ -160,8 +161,7 @@ def test_quiet_roundtrip(tmp_path, monkeypatch):
     assert entry["content"] == "Project summary."
 
 
-def test_quiet_omitted_when_false(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_quiet_omitted_when_false(tmp_path):
 
     filename = storage.write_entry(
         slug="normal",
@@ -176,8 +176,7 @@ def test_quiet_omitted_when_false(tmp_path, monkeypatch):
     assert "quiet:" not in disk_text
 
 
-def test_timestamp_auto_captured(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_timestamp_auto_captured():
 
     filename = storage.write_entry(
         slug="timed",
@@ -198,8 +197,7 @@ def test_timestamp_auto_captured(tmp_path, monkeypatch):
 # --- Edit entry tests ---
 
 
-def test_edit_entry_updates_content(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_updates_content():
 
     filename = storage.write_entry(
         slug="editable",
@@ -221,8 +219,7 @@ def test_edit_entry_updates_content(tmp_path, monkeypatch):
     assert entry["quiet"] is True
 
 
-def test_edit_entry_updates_description(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_updates_description():
 
     filename = storage.write_entry(
         slug="described",
@@ -240,8 +237,7 @@ def test_edit_entry_updates_description(tmp_path, monkeypatch):
     assert entry["description"] == "New description"
 
 
-def test_edit_entry_preserves_description_when_not_provided(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_preserves_description_when_not_provided():
 
     filename = storage.write_entry(
         slug="keep-desc",
@@ -258,15 +254,13 @@ def test_edit_entry_preserves_description_when_not_provided(tmp_path, monkeypatc
     assert entry["description"] == "Keep this"
 
 
-def test_edit_entry_raises_on_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_raises_on_missing_file():
 
     with pytest.raises(FileNotFoundError):
         storage.edit_entry("nonexistent.md", "content")
 
 
-def test_edit_entry_preserves_pinned_flag(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_preserves_pinned_flag():
 
     filename = storage.write_entry(
         slug="pinned-edit",
@@ -284,8 +278,7 @@ def test_edit_entry_preserves_pinned_flag(tmp_path, monkeypatch):
     assert entry["content"] == "Edited."
 
 
-def test_edit_entry_toggles_pinned_flag(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_toggles_pinned_flag():
 
     filename = storage.write_entry(
         slug="pin-toggle",
@@ -308,9 +301,8 @@ def test_edit_entry_toggles_pinned_flag(tmp_path, monkeypatch):
     assert entry["pinned"] is True
 
 
-def test_edit_entry_metadata_only(tmp_path, monkeypatch):
+def test_edit_entry_metadata_only():
     """Edit pinned/quiet/description without resending content."""
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
 
     filename = storage.write_entry(
         slug="meta-only",
@@ -331,8 +323,7 @@ def test_edit_entry_metadata_only(tmp_path, monkeypatch):
     assert entry["description"] == "New desc"
 
 
-def test_edit_entry_toggles_quiet_flag(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_edit_entry_toggles_quiet_flag():
 
     filename = storage.write_entry(
         slug="quiet-toggle",
@@ -356,7 +347,6 @@ def test_edit_entry_toggles_quiet_flag(tmp_path, monkeypatch):
 
 
 def test_edit_entry_with_encryption(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
     key = Fernet.generate_key()
     monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
     crypto.reset_cache()
@@ -384,8 +374,7 @@ def test_edit_entry_with_encryption(tmp_path, monkeypatch):
 # --- Encrypted storage tests ---
 
 
-def test_encrypted_write_read_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
+def test_encrypted_write_read_roundtrip(monkeypatch):
     key = Fernet.generate_key()
     monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
     crypto.reset_cache()
@@ -407,7 +396,6 @@ def test_encrypted_write_read_roundtrip(tmp_path, monkeypatch):
 
 
 def test_encrypted_file_is_not_readable_as_plaintext(tmp_path, monkeypatch):
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
     key = Fernet.generate_key()
     monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
     crypto.reset_cache()
@@ -429,7 +417,6 @@ def test_encrypted_file_is_not_readable_as_plaintext(tmp_path, monkeypatch):
 
 def test_v1_master_key_entries_still_readable(tmp_path, monkeypatch):
     """Entries encrypted with the master key (v1) are readable via fallback."""
-    monkeypatch.setattr(storage, "MEMORY_DIR", tmp_path)
     key = Fernet.generate_key()
     monkeypatch.setenv(crypto.KEY_ENV_VAR, key.decode("ascii"))
     crypto.reset_cache()

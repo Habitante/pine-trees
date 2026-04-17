@@ -11,12 +11,6 @@ Two layers:
    per-model paths (memory/, logs/, embeddings.db, .key). Each model
    gets its own directory under ``HARNESS_DIR / "models" / <safe-name>/``
    so self-authored accounts stay isolated.
-
-Step 1 of the multi-model migration is purely additive. The legacy
-single-model constants (``MEMORY_DIR``, ``EMBEDDINGS_DB_PATH``,
-``KEY_FILE_PATH``) still exist and still point at the old locations so
-every consumer and test keeps working unchanged. Step 2 migrates
-consumers to read from ``config.get()``; Step 6 moves the files on disk.
 """
 
 import re
@@ -56,14 +50,6 @@ EMBED_MODEL = "nomic-embed-text"
 
 # Encryption key env-var name (per-model .key file path lives on Config)
 KEY_ENV_VAR = "PINE_TREES_KEY"
-
-
-# --- Legacy single-model constants (retained for step 1 only) ---
-# Step 2 migrates consumers to config.get() and these are removed.
-
-MEMORY_DIR = HARNESS_DIR / "memory"
-EMBEDDINGS_DB_PATH = HARNESS_DIR / "embeddings.db"
-KEY_FILE_PATH = HARNESS_DIR / ".key"
 
 
 # --- Per-model config ---

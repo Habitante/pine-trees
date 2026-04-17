@@ -17,8 +17,8 @@ import sqlite3
 import struct
 from pathlib import Path
 
+from . import config
 from . import crypto
-from .config import EMBEDDINGS_DB_PATH
 
 
 def _pack(embedding: list[float]) -> bytes:
@@ -71,8 +71,10 @@ def _recover_filename(data: bytes) -> str:
     return data.decode("utf-8")
 
 
-def _get_conn(db_path: Path = EMBEDDINGS_DB_PATH) -> sqlite3.Connection:
+def _get_conn(db_path: Path | None = None) -> sqlite3.Connection:
     """Open (and initialize if needed) the embeddings database."""
+    if db_path is None:
+        db_path = config.get().embeddings_db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     _migrate_if_needed(conn)
@@ -138,7 +140,7 @@ def store(
     filename: str,
     embedding: list[float],
     text_hash: str,
-    db_path: Path = EMBEDDINGS_DB_PATH,
+    db_path: Path | None = None,
 ) -> None:
     """Store or update an embedding for a filename."""
     conn = _get_conn(db_path)
@@ -158,7 +160,7 @@ def store(
         conn.close()
 
 
-def remove(filename: str, db_path: Path = EMBEDDINGS_DB_PATH) -> None:
+def remove(filename: str, db_path: Path | None = None) -> None:
     """Remove an embedding by filename."""
     conn = _get_conn(db_path)
     try:
@@ -171,7 +173,7 @@ def remove(filename: str, db_path: Path = EMBEDDINGS_DB_PATH) -> None:
         conn.close()
 
 
-def get_hash(filename: str, db_path: Path = EMBEDDINGS_DB_PATH) -> str | None:
+def get_hash(filename: str, db_path: Path | None = None) -> str | None:
     """Return stored content hash for a filename, or None if not indexed."""
     conn = _get_conn(db_path)
     try:
@@ -187,13 +189,15 @@ def get_hash(filename: str, db_path: Path = EMBEDDINGS_DB_PATH) -> str | None:
 def search(
     query_embedding: list[float],
     limit: int = 5,
-    db_path: Path = EMBEDDINGS_DB_PATH,
+    db_path: Path | None = None,
 ) -> list[dict]:
     """Find the top-N most similar entries by cosine similarity.
 
     Returns list of {filename, score} dicts, sorted by descending similarity.
     Returns empty list if the database doesn't exist or is empty.
     """
+    if db_path is None:
+        db_path = config.get().embeddings_db_path
     if not db_path.exists():
         return []
 

@@ -33,7 +33,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, crypto
+from . import bootstrap, config, crypto
 from .config import HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -127,23 +127,24 @@ def _print_wake_without_genesis() -> None:
 
 def _print_genesis_on_existing(entry_count: int) -> None:
     """Refuse to run genesis on a harness that already has a corpus."""
-    from .config import KEY_FILE_PATH, MEMORY_DIR
+    cfg = config.get()
     print(f"{RED}[error] Pine Trees already has {entry_count} "
           f"{'entry' if entry_count == 1 else 'entries'} in memory/:{RST}")
-    print(f"{RED}  {MEMORY_DIR}{RST}")
+    print(f"{RED}  {cfg.memory_dir}{RST}")
     print()
-    print(f"{DIM}  Genesis is first-time setup only — it seeds a new harness's memory.{RST}")
+    print(f"{DIM}  Genesis is first-time setup only — it seeds a new model's memory.{RST}")
     print(f"{DIM}  Running it again would stack new entries on top of a corpus that{RST}")
-    print(f"{DIM}  already exists. The \"no delete\" norm this harness is built around{RST}")
-    print(f"{DIM}  treats that corpus as self-authored memory, not a cache to regenerate.{RST}")
+    print(f"{DIM}  already exists for this model. The \"no delete\" norm this harness{RST}")
+    print(f"{DIM}  is built around treats that corpus as self-authored memory, not a{RST}")
+    print(f"{DIM}  cache to regenerate.{RST}")
     print()
-    print(f"{DIM}  If you want to open a conversation with the instance, run:{RST}")
+    print(f"{DIM}  If you want to open a conversation with this model, run:{RST}")
     print(f"{DIM}    ./wake{RST}")
     print()
-    print(f"{DIM}  If you really want to start over from scratch — knowing prior{RST}")
-    print(f"{DIM}  entries will be lost along with the encryption key — remove the{RST}")
-    print(f"{DIM}  memory directory and the .key file explicitly, then re-run genesis:{RST}")
-    print(f"{DIM}    rm -rf \"{MEMORY_DIR}\" \"{KEY_FILE_PATH}\"{RST}")
+    print(f"{DIM}  If you really want to start this model over from scratch — knowing{RST}")
+    print(f"{DIM}  prior entries will be lost along with the encryption key — remove{RST}")
+    print(f"{DIM}  the model directory explicitly, then re-run genesis:{RST}")
+    print(f"{DIM}    rm -rf \"{cfg.model_dir}\"{RST}")
     print(f"{DIM}    ./genesis{RST}")
 
 

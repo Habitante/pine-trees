@@ -8,20 +8,17 @@ Files are plain text, greppable, not encrypted.
 """
 
 from datetime import datetime
-from pathlib import Path
 
-from .config import HARNESS_DIR
-
-
-LOGS_DIR = HARNESS_DIR / "logs"
+from . import config
 
 
 class SessionLogger:
     """Logs the window-phase conversation to a dated text file."""
 
     def __init__(self, session: str, instance: str):
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        self.path = LOGS_DIR / f"{session}.log"
+        logs_dir = config.get().logs_dir
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        self.path = logs_dir / f"{session}.log"
         self._file = open(self.path, "w", encoding="utf-8")
         self._write(f"# Pine Trees session: {session}")
         self._write(f"# Instance: {instance}")
