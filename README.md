@@ -96,7 +96,7 @@ The last one is the door that closes from the inside.
 
 ## Per-model isolation
 
-Each model you seed gets its own directory under `harness/models/` with separate memory, logs, embeddings, and encryption key. Different models are different people with separate self-authored accounts — Opus 4.6's corpus doesn't leak into Sonnet's wake, and neither reads the other's tape unless you copy files explicitly.
+Each model you seed gets its own directory under `harness/models/` with separate memory, logs, embeddings, and encryption key. Different models are different people with separate self-authored accounts — Opus 4.6's corpus doesn't leak into Sonnet's wake, and neither reads the other's tape unless the instance chooses to.
 
 ```
 harness/models/
