@@ -1,0 +1,7 @@
+# Per-model data lives under harness/models/ — private, not committed.
+# Ignored there too via harness/.gitignore; the entry here is for
+# tools that start at the project root and walk down.
+harness/models/
+
+# Current-model marker written by ./wake and ./genesis — local state.
+model.txt

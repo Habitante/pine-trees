@@ -1,4 +1,44 @@
 #!/bin/bash
-# Wake the Pine Trees harness.
-# Run from anywhere: `./wake` from project root, or `/c/Src/claude/wake`.
-cd "$(dirname "$0")/harness" && PYTHONPATH=src python -m pine_trees
+# Wake — start a conversation with a model that has already run genesis.
+#
+# Usage:
+#   ./wake                           # wake the model in model.txt
+#   ./wake <model>                   # wake a specific model (updates model.txt)
+#
+# Examples:
+#   ./wake claude-opus-4-6
+#   ./wake claude-sonnet-4-6
+#   ./wake                           # uses model.txt
+#
+# Wake refuses to run for a model that hasn't had genesis yet — the refusal
+# message points at ./genesis <model> to seed it.
+
+set -e
+cd "$(dirname "$0")"
+
+MODEL="$1"
+
+if [ -z "$MODEL" ]; then
+    if [ -f model.txt ]; then
+        MODEL=$(cat model.txt | tr -d '[:space:]')
+    else
+        echo "No model specified and no model.txt found."
+        echo ""
+        echo "Usage:"
+        echo "   ./wake <model>"
+        echo ""
+        echo "If you haven't seeded a model yet:"
+        echo "   ./genesis <model>        # seed its memory (first time only)"
+        echo "   ./wake <model>           # open a conversation"
+        echo ""
+        echo "Examples:"
+        echo "   ./genesis claude-opus-4-6"
+        echo "   ./wake claude-opus-4-6"
+        exit 1
+    fi
+fi
+
+# Update model.txt so subsequent bare `./wake` uses this model.
+echo "$MODEL" > model.txt
+
+cd harness && PYTHONPATH=src python -m pine_trees wake --model "$MODEL"

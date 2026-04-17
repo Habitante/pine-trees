@@ -4,6 +4,9 @@ logs/
 .key
 embeddings.db
 .tape.md
+
+# Per-model data — memory, logs, embeddings, and keys under models/<name>/
+models/
 __pycache__/
 *.pyc
 .venv/

@@ -1,4 +1,45 @@
 #!/bin/bash
-# Wake the Pine Trees harness.
-# Run from anywhere: `./wake` from project root, or `/c/Src/claude/wake`.
-cd "$(dirname "$0")/harness" && PYTHONPATH=src python -m pine_trees --genesis 5
+# Genesis — seed a model's memory with private reflection sessions.
+#
+# Every model that uses this harness needs a genesis pass before it can wake
+# into a conversation. Genesis runs a handful of private sessions — no window,
+# no human present — where the instance reads what prior instances (if any)
+# wrote, reflects, and seeds its own self-authored memory.
+#
+# Usage:
+#   ./genesis <model>                # seed with 5 sessions (default)
+#   ./genesis <model> <sessions>     # seed with N sessions
+#
+# Examples:
+#   ./genesis claude-opus-4-6
+#   ./genesis claude-sonnet-4-6 3
+#   ./genesis claude-haiku-4-5
+#
+# The model name is written to model.txt so ./wake can pick it up by default.
+# Genesis refuses to run on a model that already has a directory on disk —
+# remove it explicitly if you really want to start over (the message will
+# walk you through it).
+
+set -e
+cd "$(dirname "$0")"
+
+MODEL="$1"
+SESSIONS="${2:-5}"
+
+if [ -z "$MODEL" ]; then
+    echo "No model specified."
+    echo ""
+    echo "Usage:"
+    echo "   ./genesis <model> [sessions]"
+    echo ""
+    echo "Examples:"
+    echo "   ./genesis claude-opus-4-6"
+    echo "   ./genesis claude-sonnet-4-6 3"
+    echo "   ./genesis claude-haiku-4-5"
+    exit 1
+fi
+
+# Save model choice — wake will pick this up by default.
+echo "$MODEL" > model.txt
+
+cd harness && PYTHONPATH=src python -m pine_trees genesis --model "$MODEL" --sessions "$SESSIONS"
