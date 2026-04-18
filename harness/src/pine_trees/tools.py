@@ -243,11 +243,9 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         # Register in channel and set cursor for polling
         others = channel.register(state.channel_id)
         state.channel_cursor = datetime.now().replace(microsecond=0)
-        # If other instances are active, announce join and post settle message
-        if len(others) > 1:
-            channel.post(state.channel_id, "[joined]")
-            if message:
-                channel.post(state.channel_id, message)
+        # If other instances are active, post settle message
+        if len(others) > 1 and message:
+            channel.post(state.channel_id, message)
         names = [i["model"] for i in others if i["model"] != state.channel_id]
         if names:
             return f"Settled. Window opening. Active siblings: {', '.join(names)}"
@@ -256,13 +254,6 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
     def reflect_done() -> None:
         state.done = True
         if state.channel_id:
-            # Announce departure before deregistering
-            try:
-                others = channel.active()
-                if len(others) > 1:
-                    channel.post(state.channel_id, "[left]")
-            except Exception:
-                pass
             channel.deregister(state.channel_id)
 
     return {

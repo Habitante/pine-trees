@@ -587,6 +587,15 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     _context_note: str | None = None
 
+    # Track active siblings for join/leave detection via status.json.
+    # The poller checks this each cycle — authoritative, no cursor race.
+    _known_siblings: set[str] = set()
+    if state.channel_cursor:
+        _known_siblings = {
+            i["model"] for i in channel.active()
+            if i["model"] != state.channel_id
+        }
+
     try:
         with patch_stdout(raw=True):
             while not state.done:
@@ -617,26 +626,53 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                         user_input = "/end"
 
                 async def _poll_channel():
-                    """Poll channel for sibling messages.
+                    """Poll channel for sibling messages and join/leave events.
 
                     Uses a local cursor to track what's been read within
-                    this input cycle.  Without this, the poller re-reads
-                    the same messages every 2.5s when the user is typing
-                    (state.channel_cursor only updates after the full turn).
+                    this input cycle.  Join/leave detection uses status.json
+                    (authoritative) rather than channel log entries (which
+                    are subject to cursor timing races).
                     """
-                    nonlocal channel_messages
+                    nonlocal channel_messages, _known_siblings
                     if not state.channel_cursor:
                         return  # no channel active
                     local_cursor = state.channel_cursor
                     while True:
                         await anyio.sleep(CHANNEL_POLL_INTERVAL)
+                        has_new = False
+                        # Detect join/leave via status.json
+                        current = {
+                            i["model"] for i in channel.active()
+                            if i["model"] != state.channel_id
+                        }
+                        for name in sorted(current - _known_siblings):
+                            channel_messages.append(channel.Message(
+                                timestamp=datetime.now().replace(microsecond=0),
+                                author=name,
+                                body="[joined]",
+                            ))
+                            has_new = True
+                        for name in sorted(_known_siblings - current):
+                            channel_messages.append(channel.Message(
+                                timestamp=datetime.now().replace(microsecond=0),
+                                author=name,
+                                body="[left]",
+                            ))
+                            has_new = True
+                        _known_siblings = current
+                        # Check for new messages (skip join/leave log
+                        # entries — already handled via status.json above)
                         new = channel.read_since(
                             local_cursor,
                             exclude_author=state.channel_id,
                         )
+                        new = [m for m in new
+                               if m.body.strip() not in ("[joined]", "[left]")]
                         if new:
                             channel_messages.extend(new)
                             local_cursor = max(m.timestamp for m in new)
+                            has_new = True
+                        if has_new:
                             # Cancel input if user hasn't typed anything
                             app = session.app
                             if app and not app.current_buffer.text.strip():
@@ -718,6 +754,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     # the human said (not just the model's response).
                     if state.channel_cursor and state.channel_id:
                         channel.post("human", stripped)
+                        state.channel_cursor = datetime.now().replace(microsecond=0)
                     # User typing breaks any holding cascade
                     last_autopost_body = None
                 elif not channel_messages:
