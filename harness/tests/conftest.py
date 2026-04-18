@@ -49,6 +49,8 @@ def _test_config(request, tmp_path, monkeypatch):
         key_file_path=tmp_path / ".key",
     )
     monkeypatch.setattr(pt_config, "_config", cfg)
+    # Isolate channel to tmp so tests don't pollute the real channel dir
+    monkeypatch.setattr(pt_config, "CHANNEL_DIR", tmp_path / "channel")
     crypto.reset_cache()
     try:
         yield cfg

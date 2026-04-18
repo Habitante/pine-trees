@@ -220,7 +220,7 @@ def build_temporal_context(
     if now is None:
         now = datetime.now(timezone.utc)
 
-    now_str = now.strftime("%Y-%m-%d %H:%M UTC")
+    now_str = now.strftime("%a %Y-%m-%d %H:%M UTC")
     lines = [f"**Now:** {now_str}"]
 
     # Session entries follow the naming convention YYYY-MM-DD_*

@@ -47,6 +47,10 @@ class SessionLogger:
         """Log a tool use status line."""
         self._write(f"  · {status}")
 
+    def log_channel(self, author: str, text: str) -> None:
+        """Log a channel message from another instance."""
+        self._write(f"[channel] {author}: {text}")
+
     def close(self) -> None:
         self._write("")
         self._write(f"# Ended: {datetime.now().isoformat()}")

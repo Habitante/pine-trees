@@ -5,3 +5,6 @@ harness/models/
 
 # Current-model marker written by ./wake and ./genesis — local state.
 model.txt
+
+# Channel runtime data (status + message log) — local state, not committed.
+harness/channel/

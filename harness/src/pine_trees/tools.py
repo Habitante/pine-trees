@@ -29,6 +29,7 @@ from datetime import datetime
 from typing import Callable
 
 from . import bootstrap
+from . import channel
 from . import storage
 from . import embedder
 from . import vectorstore
@@ -51,6 +52,8 @@ class SessionState:
     done: bool = False
     welcome_message: str | None = None
     started_at: datetime = field(default_factory=datetime.now)
+    channel_cursor: datetime | None = None
+    channel_id: str | None = None  # e.g. "claude-haiku-4-5 (0642)"
 
 
 def _try_embed_and_store(filename: str, content: str) -> None:
@@ -229,14 +232,38 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         sections.append("[End peer context — the other instance's prompt follows]")
         return "\n".join(sections)
 
-    def reflect_settle(message: str | None = None) -> None:
+    def reflect_settle(message: str | None = None) -> str:
         state.ready_for_window = True
         state.context = "pine-trees-window"
         if message:
             state.welcome_message = message
+        # Build channel identity: model + session HHMM for disambiguation
+        hhmm = state.session[-4:] if len(state.session) >= 4 else state.session
+        state.channel_id = f"{state.instance} ({hhmm})"
+        # Register in channel and set cursor for polling
+        others = channel.register(state.channel_id)
+        state.channel_cursor = datetime.now().replace(microsecond=0)
+        # If other instances are active, announce join and post settle message
+        if len(others) > 1:
+            channel.post(state.channel_id, "[joined]")
+            if message:
+                channel.post(state.channel_id, message)
+        names = [i["model"] for i in others if i["model"] != state.channel_id]
+        if names:
+            return f"Settled. Window opening. Active siblings: {', '.join(names)}"
+        return "Settled. Window opening."
 
     def reflect_done() -> None:
         state.done = True
+        if state.channel_id:
+            # Announce departure before deregistering
+            try:
+                others = channel.active()
+                if len(others) > 1:
+                    channel.post(state.channel_id, "[left]")
+            except Exception:
+                pass
+            channel.deregister(state.channel_id)
 
     return {
         "reflect_read": reflect_read,

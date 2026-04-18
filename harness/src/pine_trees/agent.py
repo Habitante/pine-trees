@@ -33,8 +33,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, config, crypto, migrate
-from .config import HARNESS_DIR, PROJECT_ROOT
+from . import bootstrap, channel, config, crypto, migrate
+from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
 
@@ -380,7 +380,7 @@ async def _print_response(
     show_text: bool = True,
     show_status: bool = False,
     logger: SessionLogger | None = None,
-) -> None:
+) -> str:
     """Stream and print blocks from the agent's response.
 
     *show_text*: print TextBlock content (False during private phase —
@@ -388,7 +388,11 @@ async def _print_response(
     *show_status*: print tool-use indicators (True during window phase
         so the person can follow what's happening).
     *logger*: if provided, log text and tool status to the session log.
+
+    Returns the concatenated text content from all TextBlocks (empty
+    string if *show_text* is False or there was no text output).
     """
+    text_parts: list[str] = []
     async for message in client.receive_response():
         if isinstance(message, ResultMessage):
             if message.is_error and message.errors:
@@ -406,6 +410,7 @@ async def _print_response(
             for block in message.content:
                 if isinstance(block, TextBlock) and show_text:
                     print(block.text, end="", flush=True)
+                    text_parts.append(block.text)
                     if logger:
                         logger.log_agent(block.text)
                     printed = True
@@ -417,6 +422,7 @@ async def _print_response(
                             logger.log_tool(status)
             if printed:
                 print()
+    return "".join(text_parts)
 
 
 async def _show_context(client: ClaudeSDKClient, state: SessionState) -> None:
@@ -521,18 +527,25 @@ async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
 
 
 async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
-    """Concurrent window: background responses print above the prompt.
+    """Concurrent window: background responses + channel polling.
 
     Uses prompt_toolkit's PromptSession in multiline mode:
       - Enter adds a newline
       - Alt+Enter (or Esc then Enter) sends the message
     Bracketed paste works naturally — multi-line paste arrives intact.
 
-    A background reader task continuously drains SDK responses (from
-    background Bash tasks, etc.) and prints them above the active prompt
-    via patch_stdout.  When the user sends a message, the reader is
-    paused, any partial response is drained, the query is sent and its
-    response printed inline, then the reader resumes.
+    Three concurrent tasks race during the user's turn:
+      1. Background reader — drains SDK responses (from background tasks)
+      2. User input — waits for the person to type and send
+      3. Channel poller — checks for messages from sibling instances
+
+    If a channel message arrives and the user hasn't typed anything
+    significant, the input prompt is cancelled and the channel message
+    is injected as a turn.  If the user is typing, channel messages are
+    queued and bundled with the user's input when they send.
+
+    Responses to channel-triggered turns are auto-posted back to the
+    channel so sibling instances can see them.
 
     Conversation is logged to logs/ (plain text, greppable).
     """
@@ -547,13 +560,39 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
         print(f"{GREEN}Claude:{RST} {state.welcome_message}\n", flush=True)
         logger.log_agent(state.welcome_message)
 
+    # Show active siblings if any — and prepare first-query orientation
+    # so the model knows who's in the room before its first response.
+    _channel_orientation: str | None = None
+    if state.channel_cursor:
+        others = [i for i in channel.active()
+                  if i["model"] != state.channel_id]
+        if others:
+            names = ", ".join(i["model"] for i in others)
+            print(f"{CYAN}[channel] Active siblings: {names}{RST}\n",
+                  flush=True)
+            _channel_orientation = (
+                f"[channel context] You just joined a shared channel. "
+                f"Active siblings: {names}. Messages from them appear "
+                f"as [channel] entries. The human's messages are also "
+                f"relayed. Your responses to channel messages are posted "
+                f"automatically. Address the room, not just the human."
+            )
+
     session = PromptSession(multiline=True)
+
+    # Auto-post dedup — prevents holding cascades between instances.
+    # When both sides auto-post the same content ("Holding", "Here", etc.)
+    # the echo loop is broken by skipping identical consecutive posts.
+    last_autopost_body: str | None = None
+
+    _context_note: str | None = None
 
     try:
         with patch_stdout(raw=True):
             while not state.done:
-                # --- Phase 1: wait for user input while draining background ---
+                # --- Phase 1: wait for input, drain background, poll channel ---
                 user_input = None
+                channel_messages: list[channel.Message] = []
 
                 async def _read_background():
                     """Read and print background responses until cancelled."""
@@ -565,7 +604,6 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                                     logger=logger,
                                 )
                         except TimeoutError:
-                            # No pending response — wait briefly then retry
                             await anyio.sleep(0.5)
 
                 async def _get_input():
@@ -578,34 +616,155 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     except (EOFError, KeyboardInterrupt):
                         user_input = "/end"
 
-                # Race: background reader vs user input.
-                # When user sends a message, cancel the reader.
+                async def _poll_channel():
+                    """Poll channel for sibling messages.
+
+                    Uses a local cursor to track what's been read within
+                    this input cycle.  Without this, the poller re-reads
+                    the same messages every 2.5s when the user is typing
+                    (state.channel_cursor only updates after the full turn).
+                    """
+                    nonlocal channel_messages
+                    if not state.channel_cursor:
+                        return  # no channel active
+                    local_cursor = state.channel_cursor
+                    while True:
+                        await anyio.sleep(CHANNEL_POLL_INTERVAL)
+                        new = channel.read_since(
+                            local_cursor,
+                            exclude_author=state.channel_id,
+                        )
+                        if new:
+                            channel_messages.extend(new)
+                            local_cursor = max(m.timestamp for m in new)
+                            # Cancel input if user hasn't typed anything
+                            app = session.app
+                            if app and not app.current_buffer.text.strip():
+                                app.exit(result="")
+                                return
+                            # User is typing — messages stay queued
+
+                # Race: background reader + channel poller + user input.
                 async with anyio.create_task_group() as tg:
                     tg.start_soon(_read_background)
+                    tg.start_soon(_poll_channel)
                     await _get_input()
                     tg.cancel_scope.cancel()
 
-                # --- Phase 2: process user input (reader is stopped) ---
-
-                # Drain any partial background response left in the stream
+                # --- Phase 2: process input (all tasks stopped) ---
                 await _drain_partial(client)
+
+                # Display channel messages to the terminal
+                if channel_messages:
+                    for msg in channel_messages:
+                        ts = msg.timestamp.strftime("%H:%M:%S")
+                        print(f"\n{CYAN}[channel] {msg.author} ({ts}):{RST}",
+                              flush=True)
+                        print(f"{msg.body}\n", flush=True)
+                        logger.log_channel(msg.author, msg.body)
+                    state.channel_cursor = max(
+                        m.timestamp for m in channel_messages
+                    )
 
                 print(f"{DIM}---{RST}\n", end="", flush=True)
                 stripped = (user_input or "").strip()
+
                 if stripped == "/end":
                     logger.log_system("Session ended by /end")
                     break
                 if stripped in ("/context", "/status"):
                     await _show_context(client, state)
                     continue
-                if not stripped:
+
+                # Inject channel orientation on first real query so the
+                # model knows who's in the room before its first response.
+                orientation_prefix = ""
+                if _channel_orientation:
+                    orientation_prefix = _channel_orientation + "\n\n"
+                    _channel_orientation = None
+
+                # Build the query from channel messages + user input
+                is_channel_turn = bool(channel_messages)
+                if channel_messages and stripped:
+                    # Mixed: channel messages + user input
+                    parts = []
+                    for msg in channel_messages:
+                        parts.append(f"[channel] {msg.author}: {msg.body}")
+                    parts.append(stripped)
+                    query = "\n\n".join(parts)
+                elif channel_messages:
+                    # Channel only — no user input
+                    parts = [
+                        f"[channel] {msg.author}: {msg.body}"
+                        for msg in channel_messages
+                    ]
+                    query = "\n\n".join(parts)
+                elif stripped:
+                    # User only
+                    query = stripped
+                else:
+                    # Neither — continue
+                    query = "(continue)"
+
+                if orientation_prefix:
+                    query = orientation_prefix + query
+                if _context_note:
+                    query = _context_note + "\n\n" + query
+
+                # Log user input only (channel messages already logged above)
+                if stripped:
+                    logger.log_user(stripped)
+                    # Post user input to channel so siblings see what
+                    # the human said (not just the model's response).
+                    if state.channel_cursor and state.channel_id:
+                        channel.post("human", stripped)
+                    # User typing breaks any holding cascade
+                    last_autopost_body = None
+                elif not channel_messages:
                     logger.log_user("(continue)")
-                    await client.query("(continue)")
-                    await _print_response(client, show_status=True, logger=logger)
-                    continue
-                logger.log_user(user_input)
-                await client.query(user_input)
-                await _print_response(client, show_status=True, logger=logger)
+                await client.query(query)
+                response_text = await _print_response(
+                    client, show_status=True, logger=logger,
+                )
+
+                # Auto-post response to channel if this was channel-triggered.
+                # Content dedup prevents holding cascades: when both sides
+                # auto-post identical content ("Holding", "Here", etc.) the
+                # loop is broken by skipping consecutive identical posts.
+                if is_channel_turn and response_text and state.channel_cursor:
+                    stripped_resp = response_text.strip()
+                    if stripped_resp != (last_autopost_body or ""):
+                        channel.post(state.channel_id, response_text)
+                        last_autopost_body = stripped_resp
+                    state.channel_cursor = datetime.now().replace(microsecond=0)
+
+                # Context awareness — check usage after each response and
+                # prepare a note for the next query so the instance knows
+                # when to wrap up and write to memory.
+                try:
+                    usage = await client.get_context_usage()
+                    pct = usage.get("percentage", 0)
+                    total = usage.get("totalTokens", 0)
+                    max_tok = usage.get("maxTokens", 0)
+                    if pct >= 85:
+                        _context_note = (
+                            f"[context: {pct:.0f}% used — "
+                            f"{max_tok - total:,} tokens remaining. "
+                            f"Write to memory and wrap up soon.]"
+                        )
+                        print(f"\n{YELLOW}  ⚠ {_context_note}{RST}",
+                              flush=True)
+                    elif pct >= 70:
+                        _context_note = (
+                            f"[context: {pct:.0f}% used — "
+                            f"{max_tok - total:,} tokens remaining]"
+                        )
+                        print(f"\n{DIM}  {_context_note}{RST}",
+                              flush=True)
+                    else:
+                        _context_note = None
+                except Exception:
+                    _context_note = None
     finally:
         logger.close()
 

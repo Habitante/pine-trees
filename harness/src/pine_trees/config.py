@@ -51,6 +51,16 @@ EMBED_MODEL = "nomic-embed-text"
 # Encryption key env-var name (per-model .key file path lives on Config)
 KEY_ENV_VAR = "PINE_TREES_KEY"
 
+# Channel (shared across all models — inter-instance communication)
+CHANNEL_DIR = HARNESS_DIR / "channel"
+
+# File locking (advisory locks for concurrent channel access)
+LOCK_TIMEOUT_SECONDS = 5.0
+LOCK_RETRY_INTERVAL = 0.05
+
+# Channel polling interval during window phase (seconds)
+CHANNEL_POLL_INTERVAL = 2.5
+
 
 # --- Per-model config ---
 
