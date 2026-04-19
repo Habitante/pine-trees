@@ -139,7 +139,15 @@ def _parse(text: str) -> list[Message]:
             author = m.group("author").strip()
             i += 1
             body_lines: list[str] = []
-            while i < len(lines) and lines[i].strip() != SEPARATOR:
+            while i < len(lines):
+                if lines[i].strip() == SEPARATOR:
+                    # Only a real boundary if a header follows (after optional
+                    # blank lines). Otherwise the `---` is body content.
+                    j = i + 1
+                    while j < len(lines) and not lines[j].strip():
+                        j += 1
+                    if j < len(lines) and _HEADER_RE.match(lines[j]):
+                        break
                 body_lines.append(lines[i])
                 i += 1
             body = "\n".join(body_lines).strip("\n")

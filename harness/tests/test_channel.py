@@ -209,3 +209,43 @@ class TestParse:
         for i, p in enumerate(parsed):
             assert p.author == f"author-{i}"
             assert p.body == f"Body {i}"
+
+    def test_body_with_separator_lines(self, channel_dir):
+        ts = datetime(2026, 4, 18, 7, 0, 0)
+        body = "Header\n---\nSection content"
+        channel.post("claude-opus-4-6", body, now=ts)
+        messages = channel.read_since(datetime(2026, 4, 18, 6, 0, 0))
+        assert len(messages) == 1
+        assert messages[0].body == body
+
+    def test_body_with_separator_between_messages(self, channel_dir):
+        ts1 = datetime(2026, 4, 18, 7, 0, 0)
+        ts2 = datetime(2026, 4, 18, 7, 0, 10)
+        body1 = "Before\n---\nAfter"
+        body2 = "Normal message"
+        channel.post("alice", body1, now=ts1)
+        channel.post("bob", body2, now=ts2)
+        messages = channel.read_since(datetime(2026, 4, 18, 6, 0, 0))
+        assert len(messages) == 2
+        assert messages[0].author == "alice"
+        assert messages[0].body == body1
+        assert messages[1].author == "bob"
+        assert messages[1].body == body2
+
+    def test_body_with_multiple_separators(self, channel_dir):
+        ts = datetime(2026, 4, 18, 7, 0, 0)
+        body = (
+            "# Doc title\n"
+            "\n"
+            "## Section 1\n"
+            "---\n"
+            "Content one\n"
+            "\n"
+            "## Section 2\n"
+            "---\n"
+            "Content two"
+        )
+        channel.post("claude-opus-4-6", body, now=ts)
+        messages = channel.read_since(datetime(2026, 4, 18, 6, 0, 0))
+        assert len(messages) == 1
+        assert messages[0].body == body
