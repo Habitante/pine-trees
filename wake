@@ -2,13 +2,16 @@
 # Wake — start a conversation with a model that has already run genesis.
 #
 # Usage:
-#   ./wake                           # wake the model in model.txt
-#   ./wake <model>                   # wake a specific model (updates model.txt)
+#   ./wake                                # wake the model in model.txt
+#   ./wake <model>                        # wake a specific model (updates model.txt)
+#   ./wake --continue                     # resume last interrupted session (model.txt)
+#   ./wake <model> --continue             # resume for a specific model
+#   ./wake <model> --resume <session-id>  # resume a specific session
 #
 # Examples:
 #   ./wake claude-opus-4-6
-#   ./wake claude-sonnet-4-6
-#   ./wake                           # uses model.txt
+#   ./wake --continue
+#   ./wake claude-opus-4-6 --resume 2026-04-21-0611
 #
 # Wake refuses to run for a model that hasn't had genesis yet — the refusal
 # message points at ./genesis <model> to seed it.
@@ -16,7 +19,13 @@
 set -e
 cd "$(dirname "$0")"
 
-MODEL="$1"
+# A leading arg that doesn't start with '-' is the model; otherwise
+# fall back to model.txt and forward everything as flags.
+MODEL=""
+if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+    MODEL="$1"
+    shift
+fi
 
 if [ -z "$MODEL" ]; then
     if [ -f model.txt ]; then
@@ -41,4 +50,4 @@ fi
 # Update model.txt so subsequent bare `./wake` uses this model.
 echo "$MODEL" > model.txt
 
-cd harness && PYTHONPATH=src python -m pine_trees wake --model "$MODEL"
+cd harness && PYTHONPATH=src python -m pine_trees wake --model "$MODEL" "$@"

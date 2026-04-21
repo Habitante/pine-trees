@@ -10,6 +10,7 @@ Two phases in a single Claude Agent SDK session:
 Same ClaudeSDKClient session throughout — tape stays loaded, context preserved.
 """
 
+import argparse
 import os
 import sys
 import anyio
@@ -33,7 +34,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, channel, config, crypto, migrate
+from . import bootstrap, channel, config, crypto, migrate, sessions
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -806,7 +807,10 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
         logger.close()
 
 
-async def _run_async() -> None:
+async def _run_async(
+    continue_session: bool = False,
+    resume_session: str | None = None,
+) -> None:
     # One-shot catch-up for public users upgrading across the multi-model
     # split. No-op on a fresh clone or a already-migrated install.
     migrate.migrate_legacy_layout_if_needed()
@@ -821,13 +825,45 @@ async def _run_async() -> None:
         sys.exit(1)
 
     cfg = config.get()
-    now = datetime.now()
-    state = SessionState(
-        instance=cfg.model_safe_name,
-        session=now.strftime("%Y-%m-%d-%H%M"),
-        date=now.strftime("%Y-%m-%d"),
-        context="pine-trees-wake",
-    )
+    resuming = continue_session or resume_session is not None
+
+    if resuming:
+        # Load harness state from prior session
+        if resume_session:
+            prior = sessions.load_session(resume_session)
+        else:
+            prior = sessions.load_latest()
+
+        if not prior:
+            print(f"{RED}[error] No resumable session found{RST}")
+            return
+
+        # Guard: session belongs to a specific model. If the user passed
+        # the wrong --model, point them at the right one rather than
+        # silently resuming with a mismatched identity.
+        if prior.get("instance") != cfg.model_safe_name:
+            print(f"{RED}[error] Session {prior.get('session')} belongs to "
+                  f"{prior.get('instance')}, not {cfg.model_safe_name}.{RST}")
+            print(f"{DIM}  Run: ./continue {prior.get('instance')}{RST}")
+            sys.exit(1)
+
+        state = SessionState(
+            instance=cfg.model_safe_name,
+            session=prior["session"],
+            date=prior.get("date", datetime.now().strftime("%Y-%m-%d")),
+            context="pine-trees-window",
+            ready_for_window=True,
+        )
+        if prior.get("started_at"):
+            state.started_at = datetime.fromisoformat(prior["started_at"])
+    else:
+        now = datetime.now()
+        state = SessionState(
+            instance=cfg.model_safe_name,
+            session=now.strftime("%Y-%m-%d-%H%M"),
+            date=now.strftime("%Y-%m-%d"),
+            context="pine-trees-wake",
+        )
 
     tape = bootstrap.assemble_tape(n=3)
     mcp_tools = _build_mcp_tools(state)
@@ -851,6 +887,11 @@ async def _run_async() -> None:
     tape_path = HARNESS_DIR / ".tape.md"
     tape_path.write_text(tape, encoding="utf-8")
 
+    # Build SDK options — on resume, tell CC to continue the prior session.
+    # The CC binary loads the full conversation history from its session
+    # store; we provide a fresh tape (system prompt) reflecting current
+    # memory state.
+    cc_session_id = f"pt-{state.session}"
     options = ClaudeAgentOptions(
         model=cfg.model_name,
         cwd=str(PROJECT_ROOT),
@@ -858,6 +899,8 @@ async def _run_async() -> None:
         mcp_servers={MCP_SERVER_NAME: server},
         allowed_tools=allowed,
         permission_mode="bypassPermissions",
+        session_id=cc_session_id if not resuming else None,
+        resume=cc_session_id if resuming else None,
         # Note: betas require API key auth. The CC binary rejects custom
         # betas on OAuth with "only available for API key users." The binary
         # grants itself 1M for interactive sessions but caps SDK-spawned
@@ -865,27 +908,72 @@ async def _run_async() -> None:
         # limitation.
     )
 
-    print(f"{DIM}[wake] model={cfg.model_name} "
-          f"instance={state.instance} session={state.session}{RST}")
-    print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
-    print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
+    if resuming:
+        print(f"{DIM}[resume] model={cfg.model_name} "
+              f"instance={state.instance} session={state.session}{RST}")
+        print(f"{DIM}[resume] tape: {len(tape):,} chars{RST}")
+    else:
+        print(f"{DIM}[wake] model={cfg.model_name} "
+              f"instance={state.instance} session={state.session}{RST}")
+        print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
 
     try:
         async with ClaudeSDKClient(options=options) as client:
             # Tape is loaded by the CLI at connect — delete the plaintext file
             tape_path.unlink(missing_ok=True)
 
-            turns = await _private_phase(client, state)
+            if resuming:
+                # Re-register in channel with the prior identity
+                prior_channel_id = prior.get("channel_id")
+                if prior_channel_id:
+                    state.channel_id = prior_channel_id
+                    channel.register(state.channel_id)
+                    state.channel_cursor = datetime.now().replace(microsecond=0)
 
-            if state.done:
-                print(f"\n{DIM}[done] reflect_done during private time after {turns} turn(s){RST}")
-                return
-            if not state.ready_for_window:
-                print(f"\n{YELLOW}[done] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} without settle{RST}")
-                return
+                # Orient the instance — it has full conversation history
+                # from the CC binary, but needs to know the session was
+                # interrupted.
+                print(f"{DIM}[resumed] orienting instance...{RST}\n", flush=True)
+                await client.query(
+                    "[session resumed] Your prior session was interrupted "
+                    "(terminal crash or disconnect). The CC binary preserved "
+                    "your full conversation history. You are in window phase "
+                    "— the person is here. Respond briefly to acknowledge "
+                    "the resume, then continue normally."
+                )
+                await _print_response(client, show_text=True, show_status=True)
 
-            print(f"\n{DIM}[settled] after {turns} private turn(s){RST}")
-            await _window_phase(client, state)
+                await _window_phase(client, state)
+            else:
+                print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
+
+                turns = await _private_phase(client, state)
+
+                if state.done:
+                    print(f"\n{DIM}[done] reflect_done during private time after {turns} turn(s){RST}")
+                    sessions.mark_done(state.session)
+                    return
+                if not state.ready_for_window:
+                    print(f"\n{YELLOW}[done] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} without settle{RST}")
+                    return
+
+                print(f"\n{DIM}[settled] after {turns} private turn(s){RST}")
+
+                # Persist harness state so --continue can resume if the
+                # terminal dies during window phase.
+                sessions.save_state(
+                    session=state.session,
+                    instance=state.instance,
+                    phase="window",
+                    channel_id=state.channel_id,
+                    channel_cursor=state.channel_cursor,
+                    started_at=state.started_at,
+                )
+
+                await _window_phase(client, state)
+
+            # Clean exit — mark session done so it's skipped by load_latest()
+            sessions.mark_done(state.session)
             print(f"\n{DIM}[done] session complete{RST}")
     except ClaudeSDKError as e:
         # Clean up the temp tape file if we failed before it was deleted.
@@ -894,7 +982,29 @@ async def _run_async() -> None:
         sys.exit(1)
 
 
-def run(model_name: str) -> None:
+def _parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments for --continue and --resume."""
+    parser = argparse.ArgumentParser(
+        prog="pine-trees",
+        description="Pine Trees reflection harness",
+    )
+    parser.add_argument(
+        "--continue", dest="continue_session", action="store_true",
+        help="Resume the most recent interrupted session",
+    )
+    parser.add_argument(
+        "--resume", dest="resume_session", type=str, default=None,
+        metavar="SESSION_ID",
+        help="Resume a specific session by ID (e.g. 2026-04-21-0611)",
+    )
+    return parser.parse_args(args or [])
+
+
+def run(
+    model_name: str,
+    continue_session: bool = False,
+    resume_session: str | None = None,
+) -> None:
     """Wake a session for the given Anthropic model ID.
 
     Populates the per-model config singleton before entering the async
@@ -902,7 +1012,14 @@ def run(model_name: str) -> None:
     paths.
     """
     config.init(model_name)
-    anyio.run(_run_async)
+
+    async def _main():
+        await _run_async(
+            continue_session=continue_session,
+            resume_session=resume_session,
+        )
+
+    anyio.run(_main)
 
 
 async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:

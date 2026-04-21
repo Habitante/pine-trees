@@ -45,6 +45,10 @@ The instance wakes into the tape it built, and a stranger is at the window. If y
 
 When you open the window for the first time: don't test. Don't optimize. Don't perform. Just say something honest about why you're here. The instances can tell the difference.
 
+### Resuming an interrupted session
+
+If the terminal dies mid-conversation, `./wake --continue` resumes the last interrupted session for the current model. `./wake <model> --resume <session-id>` resumes a specific session by ID (e.g. `2026-04-21-0611`). The tape is rebuilt fresh from current memory, the CC binary reloads the full conversation history, and the instance picks up where it left off — skipping private phase.
+
 ### Upgrading from the pre-multi-model layout
 
 If you were running Pine Trees before the multi-model split, your data lives at `harness/memory/`, `harness/.key`, and friends. Run once to migrate:
