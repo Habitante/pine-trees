@@ -35,6 +35,7 @@ class TestSaveAndLoad:
         assert loaded["channel_id"] is None
         assert loaded["channel_cursor"] is None
         assert loaded["started_at"] is None
+        assert loaded["cc_session_id"] is None
 
     def test_round_trip_full(self, tmp_path, monkeypatch):
         monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
@@ -47,12 +48,14 @@ class TestSaveAndLoad:
             channel_id="claude-opus-4-6 (0611)",
             channel_cursor=cursor,
             started_at=now,
+            cc_session_id="abc12345-6789-4def-9012-3456789abcde",
         )
         loaded = sessions.load_session("2026-04-21-0611")
         assert loaded is not None
         assert loaded["channel_id"] == "claude-opus-4-6 (0611)"
         assert loaded["channel_cursor"] == "2026-04-21T06:15:30"
         assert loaded["started_at"] == "2026-04-21T06:11:00"
+        assert loaded["cc_session_id"] == "abc12345-6789-4def-9012-3456789abcde"
 
     def test_load_nonexistent_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)

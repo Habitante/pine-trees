@@ -13,6 +13,7 @@ Same ClaudeSDKClient session throughout — tape stays loaded, context preserved
 import argparse
 import os
 import sys
+import uuid
 import anyio
 from datetime import datetime
 
@@ -891,7 +892,19 @@ async def _run_async(
     # The CC binary loads the full conversation history from its session
     # store; we provide a fresh tape (system prompt) reflecting current
     # memory state.
-    cc_session_id = f"pt-{state.session}"
+    #
+    # The CC binary validates session_id/resume as UUIDs, so we generate
+    # a real UUID for fresh sessions and persist it alongside the human-
+    # readable session name. Resume loads the UUID back from the sidecar.
+    if resuming:
+        cc_session_id = prior.get("cc_session_id")
+        if not cc_session_id:
+            print(f"{RED}[error] Prior session has no cc_session_id — "
+                  f"cannot resume. Start a fresh session instead.{RST}")
+            sys.exit(1)
+    else:
+        cc_session_id = str(uuid.uuid4())
+
     options = ClaudeAgentOptions(
         model=cfg.model_name,
         cwd=str(PROJECT_ROOT),
@@ -968,6 +981,7 @@ async def _run_async(
                     channel_id=state.channel_id,
                     channel_cursor=state.channel_cursor,
                     started_at=state.started_at,
+                    cc_session_id=cc_session_id,
                 )
 
                 await _window_phase(client, state)

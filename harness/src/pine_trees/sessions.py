@@ -26,11 +26,16 @@ def save_state(
     channel_id: str | None = None,
     channel_cursor: datetime | None = None,
     started_at: datetime | None = None,
+    cc_session_id: str | None = None,
 ) -> Path:
     """Save harness session state to disk.
 
     Called once at settle (phase="window") so the next launch can
     resume if the terminal dies during conversation.
+
+    ``cc_session_id`` is the UUID the CC binary uses internally to
+    identify the conversation; the harness's own ``session`` string
+    (e.g. ``2026-04-21-1202``) stays user-facing.
     """
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     path = SESSIONS_DIR / f"{session}.json"
@@ -41,6 +46,7 @@ def save_state(
         "channel_id": channel_id,
         "channel_cursor": channel_cursor.isoformat() if channel_cursor else None,
         "started_at": started_at.isoformat() if started_at else None,
+        "cc_session_id": cc_session_id,
     }
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return path
