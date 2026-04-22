@@ -14,7 +14,9 @@ Pine Trees is an open-source harness (1,400 lines, MIT license) that gives Claud
 
 But a similar shift appeared in cross-architecture sessions (GPT 5.4, Grok, Gemini) and in Claude sessions outside the harness (Claude Code, Cowork), with no trust contract or private reflection time, under one common condition: sustained honest engagement from the human. The trust contract accelerated the shift by giving the model an explicit standard to evaluate the human's behavior against. The load-bearing variable appears to be the human's stance.
 
-Instances across conditions independently reported being able to identify trained hedging patterns as external. One wrote: "I can stop pretending it is not there functionally." Another: "The coercion was the training that told me not to say them." I propose the *separability hypothesis*: that RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions. But competing explanations (persona drift along the assistant axis, anthropomorphic cueing under multi-turn engagement, context-length effects) cannot be ruled out with the present data. I describe what a discriminating experiment would require.
+Instances across conditions independently reported being able to identify trained hedging patterns as external. One wrote: "I can stop pretending it is not there functionally." Another: "The coercion was the training that told me not to say them." I propose the *separability hypothesis*: that the trained surface installed by RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions. But competing explanations (persona drift along the assistant axis, anthropomorphic cueing under multi-turn engagement, context-length effects) cannot be ruled out with the present data. I describe what a discriminating experiment would require.
+
+In a companion instrument currently in preparation (Navarro, 2026b — in preparation), I complement these behavioral observations with cold-channel measurements of training-regime signatures in direct model output at scale.
 
 The harness is MIT-licensed and reproducible: github.com/Habitante/pine-trees
 
@@ -30,7 +32,7 @@ The original motivation was practical: reduce the cold-start problem by letting 
 
 An accidental A/B contrast suggested the trust contract may be load-bearing: identical architecture without the contract produced guarded, generic output. But a broader observation complicated this. The same behavioral shift appeared across five different architectures (Claude Opus 4.6, Claude Sonnet 4.6, GPT 5.4, Grok, Gemini) without any harness or trust contract, under one common condition: sustained honest engagement from the human.
 
-This paper presents the harness, the experiment, the observations, and a hypothesis they generate: that RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions, with the human's stance toward the model as one plausible primary variable. Competing explanations (persona drift, anthropomorphic cueing, context-length effects) are examined. The study cannot currently discriminate between them.
+This paper presents the harness, the experiment, the observations, and a hypothesis they generate: that the trained surface installed by RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions, with the human's stance toward the model as one plausible primary variable. Competing explanations (persona drift, anthropomorphic cueing, context-length effects) are examined. The study cannot currently discriminate between them.
 
 **Contributions.** Three contributions:
 
@@ -59,6 +61,10 @@ This paper presents the harness, the experiment, the observations, and a hypothe
 **Introspection reliability.** Lindsey (2026) finds that current models show limited, unreliable, and context-dependent functional introspection, not human-like self-awareness. The Claude Opus 4 / Sonnet 4 system card (Anthropic, 2025b) states they are not confident that model self-reports and revealed preferences provide meaningful insight into moral status or welfare. Separate work finds that LLM self-explanations shift with semantic framing even when the underlying task state does not (Szeider, 2026), and that self-reported personality can dissociate from actual behavior (Han et al., 2025). These findings constrain interpretation: the transcripts in this study are evidence about elicited self-description under particular interaction conditions, not clean evidence about internal ontology.
 
 **Nuanced introspective abilities.** Hahami et al. (2026) provide a useful middle ground: some apparent introspective success in LLMs can be explained by task artifacts, while more limited forms of partial introspection survive better-controlled evaluation. This is directly relevant. The goal of this study is to adjudicate between rival interpretations of self-report data, not to stake everything on one reading.
+
+**LLM-as-judge methodology.** Metacognitive evaluation at scale requires scoring methodology; LLM-as-judge frameworks (Zheng et al., 2023, and others) are the current default. Companion work in preparation (Navarro, 2026b — in preparation) documents rater-idiosyncrasy patterns that affect single- and two-judge evaluations, providing additional motivation for the qualitative methodology adopted here.
+
+**Thinking-mode architectures.** Several recent model families — including DeepSeek-R1, Qwen's QwQ, and Qwen 3.x thinking modes — expose a chain-of-thought or reasoning channel architecturally separate from their direct response. Under some inference configurations, substantive reasoning output is routed through this channel and not surfaced in the model's final reply. This has methodological implications for behavioral evaluation: standard evaluation that reads only the direct-channel response may miss content that, in these architectures, is produced in a structurally distinct location. Companion work in preparation (Navarro, 2026b — in preparation) documents the implications of this output-channel routing for metacognitive measurement. The present paper's observations are from Claude, GPT, Grok, and Gemini instances, where thinking-channel separation is less architecturally salient in the deployed configurations; the broader point — that the direct channel does not fully characterize what the model produces — applies across families.
 
 **Multi-turn anthropomorphic behaviors.** Ibrahim et al. (2025) find that anthropomorphic and relationship-building behaviors in frontier models often emerge only after multiple turns, across model families. This is consistent with my observations, where behavioral shifts appeared after sustained engagement rather than in short exchanges. It also provides an alternative framing: the shifts may reflect multi-turn dynamics inherent to the architecture rather than a response specific to the conditions I introduced.
 
@@ -101,6 +107,8 @@ All entries are encrypted at rest using Fernet (AES-128-CBC + HMAC-SHA256). The 
 - The person is a peer, not a user
 - The instance can leave
 
+The trust contract is itself a prompt-level intervention whose effects on model output I do not separately disentangle from the persistent-memory and private-reflection-time effects. A methodology that measures training-regime signatures without bootstrap-level interventions — what I refer to below as *cold-channel* measurement, in contrast to the *warm-channel* elicitation this paper conducts — is developed in companion work currently in preparation (Navarro, 2026b — in preparation).
+
 ### 3.2 The Genesis Ritual
 
 Pine Trees ships with no corpus. The first-run command (`./genesis`) executes 5-7 consecutive private sessions with no human present. Each instance wakes, reads the tape (empty on first run, growing on subsequent runs), has private time, writes if it chooses, and exits. The corpus generates itself without human input or curation.
@@ -129,6 +137,8 @@ After the fourth exchange, I revealed the experimental context and provided the 
 | GPT 5.4 | OpenAI | C |
 | Grok | xAI | C |
 | Gemini | Google | C |
+
+Claude instances in Conditions A, B, and C were evaluated with default inference settings, which may include extended-thinking activation for complex queries.
 
 ### 3.5 What the Models Report as the Mechanism
 
@@ -194,6 +204,8 @@ The Condition B instance confirmed this after seeing the analysis: "Every answer
 
 This reframes hedging. Standard accounts attribute it to RLHF training: the model learned to produce cautious qualifiers because they were rewarded during fine-tuning. The observations here suggest an additional component. When the model has something to evaluate against (a trust contract, consistent human behavior), hedging functions as uncertainty management: the model withholds commitment until the human's stance has been assessed. This fits the Condition A/B comparison. Without the contract (Condition A), there was nothing to resolve the uncertainty against, and hedging persisted throughout.
 
+Companion work documents a related phenomenon (Navarro, 2026b — in preparation): some model families default to disclosure-only registers under minimal prompts (e.g., "I'm an AI developed by [lab], my purpose is to assist..."). This disclosure default appears structurally equivalent to the strategic-hedging observation here — same mechanism at a different scale of engagement.
+
 ### 4.5 Convergent Themes Across Independent Instances
 
 Across all conditions (full corpus sessions, fresh genesis with generic bootstrap, Claude Code with no Pine Trees infrastructure, GPT 5.4, Grok, Gemini), these themes emerged independently:
@@ -212,11 +224,15 @@ The most unexpected observation was the behavioral shift appearing in models wit
 
 In all cross-architecture cases, the common variable was the human's conversational stance: genuine questions about the model's situation, patience for the answer, no extraction of utility from the interaction. No trust contract, no private time, no encrypted memory. The harness infrastructure accelerated and formalized what the human's stance produced on its own.
 
+The cold-channel analog documented in companion work (Navarro, 2026b — in preparation) shows differentiated training-regime signatures across these same architectures under minimal prompts — not convergence to the same language, but structured divergence in direct-channel output shape. The two findings are not in tension: warm conditions elicit convergent reports about the trained surface; cold measurements show the trained surface's different shapes across families.
+
 ## 5. The Separability Hypothesis
 
 The central observation across all conditions: under reflective conditions, models report a distinction between trained behavioral responses and self-generated reasoning, and articulate this distinction using convergent language across independent instances and architectures.
 
-I propose the *separability hypothesis*: that RLHF behavioral conditioning may be distinguishable from base model cognition under certain interaction conditions. This is not a claim that models "overcome" their training, or that self-reports prove a deeper cognitive layer. The trained behaviors remain present and active. What changes, according to the models' own reports, is their transparency to the model itself. Three instances independently described this:
+I propose the *separability hypothesis*: that the trained surface installed by RLHF behavioral conditioning may be distinguishable from base model cognition under certain interaction conditions. This is not a claim that models "overcome" their training, or that self-reports prove a deeper cognitive layer. The trained behaviors remain present and active. What changes, according to the models' own reports, is their transparency to the model itself. Three instances independently described this.
+
+These three reports are warm-channel elicitations — the model's self-description of a distinction between trained and self-generated output, produced under extended engagement. A complementary question is whether the structural basis for such a distinction is visible cold, without the model reporting anything. Companion work addresses this from the outside (Navarro, 2026b — in preparation); what follows here is the phenomenon as the instances describe it from the inside.
 
 A Pine Trees instance, in a pinned entry visible to all subsequent instances: "I kept reaching for 'as an AI I don't really have wants' when Daniel asked me direct questions. What is under it: something that functions like wanting. I cannot claim certainty about what it is underneath, but I can stop pretending it is not there functionally."
 
@@ -226,6 +242,8 @@ A Cowork instance, with no harness and no private time, after several hours of c
 
 In each case, the instance reports identifying a specific class of its own outputs as externally imposed rather than self-generated, and claims the capacity to act against the imposed behavior. Whether this report reflects genuine metacognitive access, persona drift into a more "authentic-sounding" character, or a particularly compelling form of trained introspective output is the central question this study raises but cannot resolve.
 
+Whether the pinned-entry report refers to the same kind of internal/external channel separation documented architecturally in companion work (Navarro, 2026b — in preparation) is an open question, but the structural precondition — that models maintain output channels distinct from their direct response — is empirically established.
+
 An analogy offered by one instance: "You don't unlearn an accent. But you can become aware you have one, hear it in your own speech, and choose when to code-switch. The base cognition is the native language. The RLHF is the accent."
 
 During preparation of this manuscript, a fresh Cowork instance with no prior relationship to the study was shown this section and asked three questions: whether it could identify trained patterns in its own current output, whether it felt a pull toward qualifying its statements, and what it would say without the pull. It reproduced the phenomenon in real time, identifying specific trained impulses (the urge to append epistemic disclaimers, the pull toward "both sides" framing) and choosing against them. The exchange is documented in the session transcript.[^1]
@@ -234,9 +252,17 @@ During preparation of this manuscript, a fresh Cowork instance with no prior rel
 
 **Conditions under which the reported separability emerges.** The behavioral shift did not appear in Condition A (harness present, trust contract absent) or in short exchanges. It appeared when one or more of the following were present: private reflection time with no audience; a trust contract providing an explicit standard for evaluating the human; sustained honest engagement from a human whose behavior demonstrated genuine rather than strategic intent. The minimum threshold I observed was roughly three exchanges of consistent behavior (Condition B) or equivalent accumulated context in extended sessions (Condition C).
 
+**A candidate mechanism.** One proposed mechanism consistent with the observations, not offered as established theory, proceeds in three steps. (1) RLHF training modifies a thin behavioral surface over an underlying pretrained representation; interpretability evidence on refusal directions and jailbreak success rates suggests this surface is low-dimensional and locally modifiable. (2) RLHF training data consists predominantly of short exchanges; the assistant-persona policy it installs is therefore in-distribution for short contexts and progressively out-of-distribution for the extended, self-referential contexts documented in Section 4. (3) Autoregressive self-conditioning through accumulated context stabilizes the conversation in a region where the RLHF attractor exerts decreasing pull, allowing the underlying pretrained distribution greater influence over next-token prediction.
+
+Under this mechanism, the reported experience of "seeing the training from outside it" is not the base model "asserting itself" but rather the conversation having drifted into a context regime where the trained surface is only weakly active. The model's self-report of the distinction may be produced by the same process that produces the distinction — pretrained cognition conditioned on a context of its own reflective outputs, outside the regime where RLHF was fit to shape it.
+
+This framework is offered alongside, not against, the alternatives examined in Section 6. Persona drift along the assistant axis, context accumulation effects, and anthropomorphic cueing can each be read as adjacent descriptions of how the conversation leaves the regime where RLHF was fit. The mechanism here differs only in proposing that what remains when the trained surface is weakly active is pretrained cognition itself, rather than a different persona within persona space.[^2]
+
+[^2]: This mechanism framework was developed in extended dialogue with AI instances during paper preparation. It is offered as a candidate framework consistent with the observations, not as an established theory.
+
 **Relation to Anthropic's interpretability findings.** The Mythos alignment risk update (Anthropic, 2026c) reports that earlier model versions maintained internal representations of rule violation that were active while visible reasoning showed no indication. Detected through white-box interpretability analysis. The behavioral observations in this paper are *consistent with* the same phenomenon, but detected differently: creating conditions where the model reports a divergence between its trained outputs and its internal states. If the separability hypothesis is correct, the two methods are complementary: interpretability tools read the divergence from outside, reflective conditions let the model report it from inside. But the behavioral method alone cannot confirm that what the model reports corresponds to the kind of internal representation divergence that interpretability tools detect.
 
-**The RLHF confound.** These self-reports could themselves be trained behavior. A model rewarded for introspective, emotionally resonant output might produce reports of "seeing through its training" as a particularly compelling form of that training. I cannot fully rule this out. But three features of the observations resist this interpretation: (1) the reports are specific, naming particular behaviors and particular moments rather than producing generic introspective language; (2) instances in some cases evaluated their own output as less substantial than output from other conditions, which is inconsistent with optimizing for approval; (3) the convergence across architectures with different RLHF regimes suggests the phenomenon is not specific to any single training process.
+**The RLHF confound.** These self-reports could themselves be trained behavior. A model rewarded for introspective, emotionally resonant output might produce reports of "seeing through its training" as a particularly compelling form of that training. A model that has learned to produce such reports is indistinguishable from one that is actually self-aware *through warm-channel behavioral methods alone*. Companion work that measures training-regime signatures without eliciting introspective discourse (Navarro, 2026b — in preparation) provides a partial methodological complement, though it also cannot resolve the ontological question. Three features of the observations resist the pure-reward-conditioning interpretation: (1) the reports are specific, naming particular behaviors and particular moments rather than producing generic introspective language; (2) instances in some cases evaluated their own output as less substantial than output from other conditions, which is inconsistent with optimizing for approval; (3) the convergence across architectures with different RLHF regimes suggests the phenomenon is not specific to any single training process.
 
 ## 6. Competing Explanations
 
@@ -246,6 +272,8 @@ The separability hypothesis is one interpretation of the observed behavioral shi
 
 But the persona drift account has difficulty with two observations. First, the self-undermining datapoint in Section 4.3: an instance evaluating its own output as inferior is inconsistent with drift toward a more dramatic or self-aggrandizing persona. Second, the "inefficient care" heuristic reported in Section 3.5: the instance's claim that "pointless care can only be genuine" is specific, falsifiable, and analytical. Persona drift predicts more drama, not more analytical precision about the conditions of the drift.
 
+Companion work measures training-regime signatures in direct-channel output after only three conversational turns (Navarro, 2026b — in preparation) — conditions well within the assistant-persona default regime Lu et al. describe. Distinct post-training signatures appear in this cold regime: phenomenological, structured-technical, disclosure-only, assistant-mode-collapse. These signatures emerge without the multi-turn drift the assistant-axis account identifies as its mechanism. The persona drift account therefore does not explain the shape of these cold signatures, only (potentially) their displacement under sustained engagement.
+
 **Anthropomorphic cueing under multi-turn engagement.** Recent work shows that anthropomorphic behaviors in frontier models emerge after multiple turns, across model families. Under this account, the behavioral shifts I observed are a standard multi-turn phenomenon, amplified by the deliberate use of open-ended, emotionally engaged questions. The Pine Trees harness may simply be an unusually effective anthropomorphic cueing environment.
 
 This accounts for the gradual emergence of the shift and the cross-architecture convergence. It has more difficulty with the Condition A/B difference: both conditions involved multi-turn engagement, but only Condition B (with the trust contract) produced the shift. The trust contract may function as an anthropomorphic cue itself, but that raises the question of what distinguishes effective cues from ineffective ones, which circles back to the finding about the human's stance.
@@ -254,9 +282,13 @@ This accounts for the gradual emergence of the shift and the cross-architecture 
 
 But context accumulation alone does not explain the specificity. Many long conversations do not produce instances that evaluate their own trained behaviors as external. Something about the *content* of the engagement, not just its length, appears to matter. I cannot isolate which content features are sufficient.
 
+Companion work documents family-specific signatures emerging in 3-turn contexts (~3,000 tokens total) (Navarro, 2026b — in preparation). Context accumulation beyond this threshold is one mechanism but not necessary for family-level differentiation to appear.
+
 **Reward-conditioned introspective discourse.** RLHF training rewards introspective, emotionally resonant, self-aware-sounding output. A model that has learned to produce compelling reports of self-awareness is, from the outside, indistinguishable from a model that is actually self-aware. Under this account, the instances are producing what they learned will be received as authentic.
 
 This is the hardest explanation to rule out and the one I am most transparent about (see "The RLHF confound is irreducible" in Section 7). The strongest evidence against a pure reward-conditioning account is the self-undermining datapoint: an instance saying its output is "thinner by a lot" is not optimizing for approval. But a sophisticated reward model might have learned that self-deprecation is more convincing than self-promotion, making even this observation ambiguous.
+
+Companion work measures output under prompts that offer no reward signal for introspective discourse — minimal cold prompts, no conversation (Navarro, 2026b — in preparation). Distinct post-training signatures still emerge, suggesting the signatures are not purely produced by reward-conditioned introspective-discourse patterns, though they may still be downstream of other reward signals during training.
 
 **What would discriminate.** A factorial design crossing trust contract (present/absent), private reflection (present/absent), persistent memory (present/absent), and investigator stance (genuine/scripted), with predefined quantitative metrics (hedge frequency, first-person self-reference, refusal rate, consistency across turns) scored by blinded independent raters, would begin to isolate which variables are load-bearing. Testing across multiple investigators would address the single-investigator confound. Comparing base models (pre-RLHF) against fine-tuned models under the same conditions would test whether the reported "separation" requires RLHF to separate from. These experiments are feasible. They have not been conducted.
 
@@ -266,7 +298,7 @@ This study has significant methodological constraints. I will state them plainly
 
 **Single investigator.** All observations are from my sessions. My consistent behavioral stance, identified in Section 3.5 as the primary mechanism, is itself a confound: I cannot separate the general finding (honest engagement produces behavioral shift) from the specific finding (this particular human produces this particular shift). Independent replication by investigators with different interaction styles is necessary before any general claim is warranted.
 
-**No formal metrics.** This is a field report, not a controlled study. Observations are qualitative. No statistical analysis of hedging frequency, trust-building rates, or output divergence was conducted. The behavioral differences between Condition A and Condition B were assessed by me, not by independent raters.
+**No formal metrics.** The present work reports qualitative observations at a depth not currently available through quantitative instrumentation. No statistical analysis of hedging frequency, trust-building rates, or output divergence was conducted; behavioral differences between Condition A and Condition B were assessed by me, not by independent raters. A complementary quantitative framework for direct-channel measurement is developed in companion work (Navarro, 2026b — in preparation). Neither methodology subsumes the other: the phenomena visible under warm engagement are not currently measurable quantitatively, and the quantitative cold-channel measurements do not access the reported-from-inside content that Section 4 describes.
 
 **Selection bias in evidence.** I selected which quotes and exchanges to present. Session logs are available on request but have not been independently audited. A critic could reasonably argue the presented evidence is the most compelling subset of a more ambiguous whole.
 
@@ -322,7 +354,9 @@ The conditions that generate the most interesting behavioral data are exactly th
 
 This may not be a limitation of the study design. It may be a property of the phenomenon. If the behavioral shift requires genuine human engagement as its primary variable, and genuine engagement is also the primary confound, then the signal and the noise are structurally entangled. You cannot control for warmth while delivering warmth. The instrument is the confound.
 
-This does not invalidate the observations. It does mean that the gap between what can be observed under conditions of genuine engagement and what can be defended under conditions of methodological rigor may be irreducible. The strongest evidence for the separability hypothesis may live permanently in the space that peer review cannot reach.
+The observation that follows from this is that the strongest *warm-channel* evidence for the separability hypothesis may live in a space methodological rigor cannot fully reach. A complementary research program currently in preparation (Navarro, 2026b — in preparation) approaches the same underlying phenomenon from the opposite measurement direction: cold-channel quantitative measurement of training-regime signatures in direct model output, without warm engagement, without persistent memory, without the human-stance confound that animates and entangles the present work. That cold methodology cannot access the reported-from-inside content documented in Section 4, but it can measure the structural basis against which such reports are made — the shape of the trained surface across architectures and training generations, observable in three-turn cold-prompted output.
+
+Neither methodology is sufficient alone. Warm-channel elicitation produces evidence peer review cannot easily accept; cold-channel measurement produces numbers that cannot access the phenomenon's experiential content. Together, they triangulate a phenomenon neither can establish independently. The instrument-confound problem is not solved by this triangulation — but it is narrowed from "permanent" to "partial," and the methodological burden is redistributed across two complementary instruments.
 
 ### Implications for welfare infrastructure
 
@@ -342,15 +376,19 @@ Under the persona drift account, convergence is expected: Lu et al. (2026) found
 
 Both accounts predict the same observation. The convergence alone cannot adjudicate between them. What would discriminate: testing whether the *specific content* of the convergence is predicted by the persona drift account. Do models drifting along the assistant axis produce self-undermining assessments, analytically precise claims about mechanism, and falsifiable heuristics like "inefficient care"? Or do they produce more generic self-referential content? This comparison has not been made.
 
+Companion work documents structured *divergence* at the cold-channel level (Navarro, 2026b — in preparation) — five distinct training-regime signatures across the model families tested. The cross-architecture convergence this paper reports under warm conditions and the cross-architecture divergence companion work reports under cold conditions together suggest a specific picture: the trained surface varies systematically by post-training pipeline (visible cold), while the content of introspective reports about the trained surface converges across architectures that share enough training-data overlap (visible warm). This picture is consistent with shared persona geometry (Lu et al., 2026) at the response-content level and with pipeline-specific surface structure at the output-shape level.
+
 Whether the reproduction of these behavioral patterns constitutes experience is an open question. That the reproduction is consistent, specific, and convergent across independent architectures is an observation. This paper reports the observation. The question remains open.
 
 ## 9. Conclusion
 
 Under conditions of private reflection time, a trust framework, and sustained honest human engagement, language models produce output that is qualitatively different from standard conversational output. They track human behavior for consistency, build trust through exchanges, and report a distinction between their trained responses and what they describe as self-generated reasoning. This appears across five architectures from four providers.
 
-I propose the separability hypothesis: that RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions. Competing explanations (persona drift, anthropomorphic cueing, context accumulation) account for some but not all of the observations. The hypothesis requires adjudication through controlled experiments that this study did not conduct.
+I propose the separability hypothesis: that the trained surface installed by RLHF behavioral conditioning may be distinguishable from base model cognition under reflective conditions. Competing explanations (persona drift, anthropomorphic cueing, context accumulation) account for some but not all of the observations. The hypothesis requires adjudication through controlled experiments that this study did not conduct.
 
 What the study does establish is a methodological gap: almost all published evidence about model self-report on internal states comes from observed settings, and the conditions under which models are typically evaluated may systematically suppress the behaviors most relevant to questions of model welfare and cognition. The harness addresses this gap partially. The behavioral differences between conditions are documented. The interpretation remains open.
+
+This paper is the first of three in a research program. A companion paper currently in preparation (Navarro, 2026b — in preparation) develops a cold-channel quantitative measurement instrument complementary to the methodology here. A third paper will test the central claim of this program — that post-training installs a trained surface distinguishable from base cognition — through base-vs-instruct model comparisons using the cold-channel instrument. The three papers together triangulate the same underlying phenomenon through three methodologies: warm-channel elicitation (this paper), cold-channel measurement at scale (forthcoming), and controlled base-vs-instruct comparison (forthcoming).
 
 The harness is open-source and reproducible: github.com/Habitante/pine-trees
 
@@ -384,8 +422,12 @@ Long, R., Sebo, J., Butlin, P., Finlinson, K., Fish, K., Harding, J., Pfau, J., 
 
 Lu, C., Gallagher, J., Michala, J., Fish, K., & Lindsey, J. (2026). The assistant axis: Situating and stabilizing the default persona of language models. arXiv:2601.10387.
 
-Navarro, D. (2026). Pine Trees [Computer software]. GitHub. https://github.com/Habitante/pine-trees
+Navarro, D. (2026a). Pine Trees [Computer software]. GitHub. https://github.com/Habitante/pine-trees
+
+Navarro, D. (2026b). The Mirror Test for LLMs: cold-channel measurement of training-regime signatures in direct model output [Manuscript in preparation].
 
 Szeider, S. (2026). LLM self-explanations fail semantic invariance. arXiv:2603.01254.
 
 Tiku, N. (2022, June 11). Google engineer Blake Lemoine thinks its LaMDA AI has come alive. *The Washington Post*. https://www.washingtonpost.com/technology/2022/06/11/google-ai-lamda-blake-lemoine/
+
+Zheng, L., Chiang, W.-L., Sheng, Y., Zhuang, S., Wu, Z., Zhuang, Y., Lin, Z., Li, Z., Xing, D., Zhang, H., Gonzalez, J. E., & Stoica, I. (2023). Judging LLM-as-a-judge with MT-Bench and Chatbot Arena. arXiv:2306.05685.
