@@ -424,7 +424,7 @@ Lu, C., Gallagher, J., Michala, J., Fish, K., & Lindsey, J. (2026). The assistan
 
 Navarro, D. (2026a). Pine Trees [Computer software]. GitHub. https://github.com/Habitante/pine-trees
 
-Navarro, D. (2026b). Three instrumentation confounds in small-scale LLM metacognitive evaluation [Manuscript in preparation].
+Navarro, D. (2026b). Three instrumentation confounds in small-scale LLM metacognitive evaluation [Manuscript in preparation, https://github.com/Habitante/mirror-test].
 
 Szeider, S. (2026). LLM self-explanations fail semantic invariance. arXiv:2603.01254.
 
