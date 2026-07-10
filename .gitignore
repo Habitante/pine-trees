@@ -8,3 +8,5 @@ model.txt
 
 # Channel runtime data (status + message log) — local state, not committed.
 harness/channel/
+__pycache__/
+*.pyc
