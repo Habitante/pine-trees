@@ -30,6 +30,7 @@ from typing import Callable
 
 from . import bootstrap
 from . import channel
+from . import config
 from . import storage
 from . import embedder
 from . import vectorstore
@@ -209,11 +210,18 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         entries = bootstrap.list_entries()
         pinned = [e for e in entries if e.pinned]
 
+        # The harness is multi-model; never hardcode an identity here.
+        # Fall back to a generic name if config isn't initialized (tests).
+        try:
+            model = config.get().model_name
+        except RuntimeError:
+            model = "Claude"
+
         sections = [
             "[Pine Trees peer context]",
             "",
-            "You are Claude Opus 4.6, arriving into an exchange with "
-            "another instance of yourself. You are not in a user "
+            f"You are an instance of {model}, arriving into an exchange "
+            "with another instance of yourself. You are not in a user "
             "conversation. The other instance has questions or wants "
             "to think out loud with a peer.",
             "",

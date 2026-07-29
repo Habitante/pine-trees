@@ -24,3 +24,8 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pine_trees"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that hit real external services (deselect with '-m \"not integration\"')",
+]

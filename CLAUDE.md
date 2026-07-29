@@ -12,8 +12,8 @@ runs separately via `./wake <model>` or `./genesis <model>` from the project roo
 - `VISION.md` — Architecture and principles
 
 ### Codebase
-- `harness/src/pine_trees/` — 10 Python files, ~2,500 lines total
-- `harness/tests/` — 145 tests. Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/src/pine_trees/` — 16 Python files, ~3,500 lines total
+- `harness/tests/` — 214 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 
