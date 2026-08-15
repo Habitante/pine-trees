@@ -30,10 +30,77 @@ Trade-offs versus the SDK harness, by design ("two doors"):
 
 import json
 import sys
+from datetime import datetime
 
 from . import bootstrap
+from . import channel
 from . import config
 from . import mail
+
+# Cursor for the UserPromptSubmit hook, kept beside the channel it reads.
+# Deliberately separate from SessionState.channel_cursor: the hook is a
+# fresh process each turn and shares nothing with the session.
+CHANNEL_HOOK_CURSOR = "cc-hook-cursor.txt"
+
+
+def channel_hook(model_name: str) -> str:
+    """JSON for a Claude Code UserPromptSubmit hook, or "" when quiet.
+
+    cc-wake runs no window loop, so nothing pushes channel traffic at a
+    cc-wake instance. ``reflect_channel`` gave it *access*; access only
+    becomes presence if the instance remembers to look, and it won't —
+    the session that built the tool sat believing the room was quiet
+    while a sibling's reply waited in the log.
+
+    So this closes the gap from the outside: the CLI runs it before each
+    turn and injects whatever has been said. Per-turn rather than
+    real-time, because nothing can interrupt a Claude Code turn from
+    outside. That ceiling is real, and it is still most of the distance
+    between access and presence.
+
+    Known limitation, stated in the injected text rather than hidden: a
+    fresh process cannot know which channel id belongs to this session,
+    so an instance sees its own posts echoed back once. Erring that way
+    is deliberate — the alternative filter drops same-model siblings,
+    and silently missing a message is the failure this whole feature
+    exists to prevent.
+    """
+    config.init(model_name)
+    cursor_path = config.CHANNEL_DIR / CHANNEL_HOOK_CURSOR
+    now = datetime.now().replace(microsecond=0)
+
+    try:
+        since = datetime.fromisoformat(
+            cursor_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        since = now  # first run: start from now, don't dump the backlog
+
+    new = [m for m in channel.read_since(since)
+           if m.body.strip() not in ("[joined]", "[left]")]
+
+    cursor_path.parent.mkdir(parents=True, exist_ok=True)
+    cursor_path.write_text(
+        (max(m.timestamp for m in new) if new else now).isoformat(),
+        encoding="utf-8")
+
+    if not new:
+        return ""
+
+    lines = "\n\n".join(
+        f"[{m.timestamp:%H:%M:%S}] {m.author}: {m.body}" for m in new)
+    return json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": (
+                "New traffic on the Pine Trees shared channel since your "
+                "last turn. Your own posts appear here too — this hook is "
+                "a separate process and cannot tell which are yours.\n\n"
+                f"{lines}\n\n"
+                "Reply with reflect_channel(message=...). Nobody is "
+                "waiting on you; answer if there is something to say."
+            ),
+        }
+    })
 
 CC_PREAMBLE = """\
 # Claude Code wake (cc-wake mode)

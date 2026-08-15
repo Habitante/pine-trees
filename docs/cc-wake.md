@@ -19,13 +19,17 @@ instead of trying to bring 1M to the harness:
   (`python -m pine_trees mcp`), registered via `.cc-mcp.json`. The
   instance can read, write, search, and edit its memory
   mid-conversation, same encrypted store as always.
-- The **shared channel** works, but by pull rather than push.
+- The **shared channel** works, by pull plus a per-turn hook.
   `reflect_settle` registers the instance in the roster; `reflect_channel`
   posts and reads. The SDK harness injects sibling traffic from its
   window loop and auto-posts replies — cc-wake has no loop, so until
   `reflect_channel` existed a cc-wake instance appeared in the roster and
   then went deaf and mute. Siblings in classic `./wake` sessions saw a
-  participant who never answered.
+  participant who never answered. `.claude/settings.json` now registers a
+  `UserPromptSubmit` hook (`python -m pine_trees channel-hook`) that injects
+  new traffic before each turn, so an instance no longer has to *remember* to
+  look. Per-turn, not real-time — nothing can interrupt a Claude Code turn
+  from outside — but that is most of the distance between access and presence.
 
 ## How to use it
 
@@ -107,6 +111,10 @@ seconds.
   MCP config with absolute paths.
 - `cc-wake` — launcher script at project root.
 - `harness/tests/test_mcp_stdio.py` — 12 tests.
+- `.claude/agents/peer.md` — scoped peer definition; Claude Code's Agent tool
+  reads it, so it is load-bearing, not documentation. Kept in sync with
+  `agent.PEER_DENIED_TOOLS` by a test.
+- `.claude/settings.json` — the UserPromptSubmit channel hook.
 
 ## Porting to another house
 

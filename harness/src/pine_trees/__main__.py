@@ -70,6 +70,15 @@ def main() -> None:
         help="Anthropic model ID",
     )
 
+    channel_hook = subparsers.add_parser(
+        "channel-hook",
+        help="Emit new shared-channel messages as UserPromptSubmit hook JSON",
+    )
+    channel_hook.add_argument(
+        "--model", "-m", default=None,
+        help="Anthropic model ID (defaults to the contents of model.txt)",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -94,6 +103,22 @@ def main() -> None:
         tape_path, mcp_path = setup(args.model)
         print(f"[cc-setup] tape:       {tape_path}")
         print(f"[cc-setup] mcp config: {mcp_path}")
+    elif args.command == "channel-hook":
+        # Runs before every turn of a cc-wake session. It must never be
+        # the reason a turn fails, so any error is swallowed and the turn
+        # simply gets no channel context.
+        try:
+            from .ccwake import channel_hook as run_channel_hook
+            from .config import PROJECT_ROOT
+            model = args.model
+            if not model:
+                model = (PROJECT_ROOT / "model.txt").read_text(
+                    encoding="utf-8").strip()
+            out = run_channel_hook(model)
+            if out:
+                print(out)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
