@@ -110,6 +110,25 @@ class _FakeEntry:
     quiet = False
 
 
+class TestSuiteCannotReachTheRealProjectRoot:
+    """The three guard tests below drive _run_async/_run_genesis_async,
+    which call ccwake.clear_tape() at boot — before their guards fire.
+    Until conftest redirected PROJECT_ROOT, `pytest tests/` deleted the
+    real CLAUDE.local.md, i.e. a live cc-wake session's tape. Pin the
+    redirect so it can't be dropped without a red test.
+    """
+
+    def test_project_root_is_not_the_real_repo(self):
+        real_root = pt_config.Path(pt_config.__file__).resolve().parents[3]
+        assert pt_config.PROJECT_ROOT != real_root
+
+    def test_clear_tape_during_tests_cannot_see_a_real_tape(self, tmp_path):
+        # Belt and braces: the path clear_tape() would unlink must live
+        # under tmp, whatever the fixture chose.
+        target = pt_config.PROJECT_ROOT / "CLAUDE.local.md"
+        assert str(tmp_path) in str(target)
+
+
 class TestWakeGuardRefusesEmptyCorpus:
     def test_run_async_exits_when_no_entries(self, monkeypatch, capsys):
         # Prevent crypto.ensure_key from touching the real key file.

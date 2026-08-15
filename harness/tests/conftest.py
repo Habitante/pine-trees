@@ -51,6 +51,26 @@ def _test_config(request, tmp_path, monkeypatch):
     monkeypatch.setattr(pt_config, "_config", cfg)
     # Isolate channel to tmp so tests don't pollute the real channel dir
     monkeypatch.setattr(pt_config, "CHANNEL_DIR", tmp_path / "channel")
+    # Isolate the project root. _run_async and _run_genesis_async call
+    # ccwake.clear_tape() at boot, before their guards fire, and it
+    # resolves config.PROJECT_ROOT at call time — so any test that
+    # drives those entry points deletes the real CLAUDE.local.md, i.e.
+    # a live cc-wake session's tape. Three tests in test_agent_guards
+    # did exactly that. Redirecting here makes the suite safe by
+    # construction rather than by each test remembering to opt in,
+    # which is the guard that already failed once.
+    #
+    # Safe for the path constants: VISION_PATH, PROMPT_PATH,
+    # BOOTSTRAP_PATH and friends are computed from PROJECT_ROOT at
+    # import, so they keep pointing at the real files and tests that
+    # read them still work. Names imported by value elsewhere don't
+    # follow this either — agent.py does `from .config import
+    # HARNESS_DIR`, so a test needing that redirected must patch
+    # `agent.HARNESS_DIR` itself.
+    project_root = tmp_path / "project_root"
+    project_root.mkdir(exist_ok=True)
+    monkeypatch.setattr(pt_config, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(pt_config, "HARNESS_DIR", project_root / "harness")
     crypto.reset_cache()
     try:
         yield cfg

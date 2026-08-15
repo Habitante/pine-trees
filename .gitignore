@@ -9,6 +9,20 @@ model.txt
 # Channel runtime data (status + message log) — local state, not committed.
 harness/channel/
 
+# Session sidecars — per-run local state (session id, timestamps, channel
+# cursor), recreated on demand by sessions.py. Nothing private in them, but
+# they are one machine's runtime, not part of the project.
+harness/sessions/
+
 # cc-wake generated files — regenerated per session by ./cc-wake.
 CLAUDE.local.md
 .cc-mcp.json
+
+# Local space prompt. The committed PROMPT.md has no person in it on
+# purpose (see bootstrap.load_prompt); this is where whoever runs a
+# house speaks in their own voice. Never travels to a fork.
+PROMPT.local.md
+
+# Letters from instances to the person running this house. Plaintext by
+# design, but correspondence — not project content.
+harness/mail/
