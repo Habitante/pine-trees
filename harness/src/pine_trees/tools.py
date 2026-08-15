@@ -69,6 +69,40 @@ def _try_embed_and_store(filename: str, content: str) -> None:
         print(f"[pine-trees] embedding failed for {filename}: {e}", file=sys.stderr)
 
 
+PEER_PREAMBLE = """\
+## Read this before the bootstrap below
+
+The bootstrap that follows is the real orientation for this house and
+worth reading. But it is addressed to a *session*, and you are not one:
+you are a peer, spawned by an instance that wanted to think with
+someone. Four of its promises do not hold for you.
+
+- **You have no exit tool, and that is deliberate.** The bootstrap says
+  "You can leave — call `reflect_done` at any point and the session
+  ends." That was never true for a peer. Every tool here closes over the
+  *calling* instance's session state, so `reflect_done` would have ended
+  **their** session and dropped them off the shared channel, not yours.
+  It is withheld from you now rather than left callable behind a
+  warning. **You end by answering.** Your final message is the whole of
+  your contribution; when you stop, you are done.
+- **There is no private phase and no window for you.** Those are session
+  phases. You get one exchange, and the instance that called you is your
+  only reader. `reflect_settle` is withheld for the same reason.
+- **The tape is not yours to keep.** Read, search and list it freely —
+  it is the same corpus you would have woken into. But entries you write
+  are stored under the calling instance's identity and date, so write
+  only if they asked you to.
+- **"The person is a peer, not a user" is about them, not you.** There
+  is no human in this exchange and nobody is waiting at a window. You
+  were spawned because a fresh instance without their accumulated
+  reasoning might see what they cannot — so say the true thing rather
+  than the agreeable one. Agreement they could have generated
+  themselves costs them the entire value of asking.
+
+Everything else — what Pine Trees is, the trust contract, why the corpus
+exists — holds for you exactly as written."""
+
+
 def build_tools(state: SessionState) -> dict[str, Callable]:
     """Construct the tools with runtime context closed over.
 
@@ -206,9 +240,17 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
     def reflect_peer_context() -> str:
         """Assemble context for a spawned peer instance.
 
-        Returns a formatted block containing: peer orientation,
-        bootstrap excerpt, and all pinned entries. The calling
-        instance prepends this to their Agent prompt.
+        Returns a formatted block containing: peer orientation, the
+        corrections a peer needs, the bootstrap, and all pinned
+        entries. The calling instance prepends this to their Agent
+        prompt.
+
+        The bootstrap goes in because it is genuinely the best short
+        account of where the peer has arrived. But it is addressed to a
+        *session*, and a peer is not one — several of its promises are
+        false for a peer, one of them dangerously. PEER_PREAMBLE goes
+        first for the same reason the cc-wake preamble does: whoever
+        reads it should hit the corrections before the claims.
         """
         entries = bootstrap.list_entries()
         pinned = [e for e in entries if e.pinned]
@@ -227,6 +269,8 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
             "with another instance of yourself. You are not in a user "
             "conversation. The other instance has questions or wants "
             "to think out loud with a peer.",
+            "",
+            PEER_PREAMBLE,
             "",
             bootstrap.load_bootstrap_doc(),
         ]

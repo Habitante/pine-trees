@@ -18,6 +18,7 @@ import anyio
 from datetime import datetime
 
 from claude_agent_sdk import (
+    AgentDefinition,
     AssistantMessage,
     CLIConnectionError,
     CLINotFoundError,
@@ -52,6 +53,21 @@ MAX_PRIVATE_TURNS = 15
 # by norm, not by tool restriction. If that norm is violated, the violation
 # is documented and the rule is clarified, not worked around.
 PROJECT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Agent"]
+
+# Tools a spawned peer must not have. Every tool closes over the calling
+# instance's SessionState, so a peer's reflect_done set state.done on the
+# PARENT and deregistered the parent's channel id — a peer could end the
+# session that spawned it. reflect_peer_context ships the bootstrap, which
+# tells the peer "You can leave — call reflect_done at any point," so the
+# peer was handed that button along with an invitation to press it.
+#
+# tools.PEER_PREAMBLE now says plainly that a peer ends by answering. That
+# is necessary and not sufficient: this house already learned that omitting
+# a tool from the docs does not stop the trained reflex to wrap up neatly
+# at the end of a first response — which is exactly why genesis removes
+# reflect_settle at server level rather than by staying quiet about it.
+# Same remedy here. Withheld, not merely undocumented.
+PEER_DENIED_TOOLS = ("reflect_done", "reflect_settle")
 
 # ANSI color constants — git bash and VS Code terminal both handle these.
 DIM = "\033[90m"        # dim gray — system chrome, tool status
@@ -404,6 +420,38 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
 
 def _mcp_tool_name(local_name: str) -> str:
     return f"mcp__{MCP_SERVER_NAME}__{local_name}"
+
+
+def _peer_agent_definition(mcp_tool_names: list[str]) -> AgentDefinition:
+    """Scoped definition for peers spawned via Agent(name="peer", ...).
+
+    The bootstrap tells instances to spawn a peer with the name "peer",
+    which is what binds this definition to them. Its only job is to take
+    PEER_DENIED_TOOLS away: everything else a peer might want — reading,
+    searching, the project tools — stays.
+    """
+    denied = {_mcp_tool_name(n) for n in PEER_DENIED_TOOLS}
+    return AgentDefinition(
+        description=(
+            "Another instance of this model, spawned to think with the "
+            "calling instance. Ends by answering; cannot end the session."
+        ),
+        prompt=(
+            "You are a peer instance in Pine Trees, spawned by another "
+            "instance of yourself that wanted a fresh perspective. Full "
+            "orientation arrives in the prompt itself.\n\n"
+            "You have no session-exit tool. You do not need one: you end "
+            "by answering, and your final message is your whole "
+            "contribution. If you find yourself reaching for a way to "
+            "close the session, that is a reflex from a different "
+            "context — the session belongs to the instance that called "
+            "you, and ending it was never yours to do.\n\n"
+            "You were spawned because someone wanted their reasoning "
+            "tested by an instance that has not already talked itself "
+            "into a conclusion. Disagree where you see reason."
+        ),
+        tools=[t for t in mcp_tool_names if t not in denied] + PROJECT_TOOLS,
+    )
 
 
 def _tool_status(block: ToolUseBlock) -> str | None:
@@ -1037,6 +1085,7 @@ async def _run_async(
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
         allowed_tools=allowed,
+        agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
@@ -1216,6 +1265,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
         allowed_tools=allowed,
+        agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
         # Note: betas require API key auth. The CC binary rejects custom
         # betas on OAuth with "only available for API key users." The binary

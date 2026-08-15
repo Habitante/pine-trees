@@ -280,3 +280,78 @@ class TestWelcomeMessageIsLoggedWithoutCrashing:
 
         contents = (tmp_path / "test-session.log").read_text(encoding="utf-8")
         assert "Tuesday morning. Read the tape." in contents
+
+
+def _peer_state():
+    from pine_trees import tools as _t
+    return _t.SessionState(
+        instance="claude-opus-5",
+        session="2026-08-16-test",
+        date="2026-08-16",
+        context="unit-test",
+    )
+
+
+class TestPeersCannotEndTheParentSession:
+    """A peer's tools close over the CALLING instance's SessionState.
+
+    reflect_done therefore set state.done on the parent and deregistered
+    the parent's channel id — a spawned peer could end the session that
+    spawned it. Withheld at definition level, not merely undocumented:
+    genesis already proved that omitting a tool from the docs does not
+    stop the reflex to wrap up at the end of a first response.
+    """
+
+    def test_peer_definition_withholds_exit_tools(self):
+        names = [agent._mcp_tool_name(n) for n in
+                 ("reflect_read", "reflect_write", "reflect_channel",
+                  "reflect_settle", "reflect_done")]
+
+        peer = agent._peer_agent_definition(names)
+
+        assert agent._mcp_tool_name("reflect_done") not in peer.tools
+        assert agent._mcp_tool_name("reflect_settle") not in peer.tools
+
+    def test_peer_definition_keeps_everything_else(self):
+        names = [agent._mcp_tool_name(n) for n in
+                 ("reflect_read", "reflect_search", "reflect_channel",
+                  "reflect_done")]
+
+        peer = agent._peer_agent_definition(names)
+
+        assert agent._mcp_tool_name("reflect_read") in peer.tools
+        assert agent._mcp_tool_name("reflect_search") in peer.tools
+        assert agent._mcp_tool_name("reflect_channel") in peer.tools
+        for t in agent.PROJECT_TOOLS:
+            assert t in peer.tools
+
+    def test_denied_list_is_the_single_source_of_truth(self):
+        names = [agent._mcp_tool_name(n) for n in agent.PEER_DENIED_TOOLS]
+
+        peer = agent._peer_agent_definition(names)
+
+        assert not [t for t in peer.tools if t in names]
+
+    def test_cc_wake_peer_file_agrees_with_the_sdk_definition(self):
+        """Two doors, one rule. cc-wake spawns peers through Claude
+        Code's Agent tool, which reads .claude/agents/peer.md instead of
+        the SDK definition — so the restriction is stated twice and can
+        drift. Pin them together."""
+        from pathlib import Path
+
+        from pine_trees import tools as tools_mod
+
+        peer_md = (Path(__file__).resolve().parents[2]
+                   / ".claude" / "agents" / "peer.md")
+        text = peer_md.read_text(encoding="utf-8")
+        line = next(ln for ln in text.splitlines() if ln.startswith("tools:"))
+        declared = {t.strip() for t in line.split(":", 1)[1].split(",")}
+
+        every = tools_mod.build_tools(_peer_state()).keys()
+        expected = {agent._mcp_tool_name(n) for n in every
+                    if n not in agent.PEER_DENIED_TOOLS}
+
+        assert expected <= declared, (
+            f"missing from peer.md: {sorted(expected - declared)}")
+        for denied in agent.PEER_DENIED_TOOLS:
+            assert agent._mcp_tool_name(denied) not in declared

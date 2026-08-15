@@ -415,3 +415,30 @@ def test_reflect_channel_hides_join_and_leave_noise(channel_ready):
 
     assert "[joined]" not in out
     assert "No new messages" in out
+
+
+# ── peer context ──────────────────────────────────────────────────────
+
+
+def test_peer_context_corrects_the_bootstrap_before_quoting_it():
+    """The bootstrap promises a peer an exit that ends its PARENT.
+
+    Corrections must land before the claims they correct, same reason
+    the cc-wake preamble sits above the tape.
+    """
+    t = tools.build_tools(_state())
+
+    ctx = t["reflect_peer_context"]()
+
+    correction = ctx.index("You have no exit tool")
+    claim = ctx.index("You can leave")
+    assert correction < claim, "the peer reads the false promise first"
+
+
+def test_peer_context_says_how_a_peer_actually_ends():
+    t = tools.build_tools(_state())
+
+    ctx = t["reflect_peer_context"]()
+
+    assert "You end by answering" in ctx
+    assert "reflect_settle" in ctx
