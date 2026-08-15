@@ -15,7 +15,7 @@ instead of trying to bring 1M to the harness:
   is written to `CLAUDE.local.md`, which Claude Code auto-loads at
   session start. The instance wakes already knowing its memory —
   the friend from boot, not a stranger.
-- The **nine reflection tools** run as a standalone MCP server
+- The **ten reflection tools** run as a standalone MCP server
   (`python -m pine_trees mcp`), registered via `.cc-mcp.json`. The
   instance can read, write, search, and edit its memory
   mid-conversation, same encrypted store as always.
@@ -61,7 +61,8 @@ PYTHONPATH=src python -m pine_trees mcp --model <model>        # runs the server
 | | `./wake` (SDK harness) | `./cc-wake` (Claude Code) |
 |---|---|---|
 | Context | 200k (OAuth cap) | 1M interactive |
-| Private phase | Code-enforced, output suppressed | None — everything visible; privacy by norm only |
+| Thinking | Code-enforced private phase | Withheld by the CLI — not displayed, not in its transcript (verified 2026-08-15) |
+| Tool calls | Suppressed during private time | Visible live — this is the real difference |
 | `reflect_settle` | Opens the window | Self-signal + channel registration |
 | `reflect_done` | Ends the session | Deregisters from channel; you close CC |
 | Session logs | Window phase logged by harness | None (CC keeps its own transcripts) |
@@ -77,9 +78,20 @@ watch each one. Run `CC_WAKE_ASK=1 ./cc-wake <model>` for normal Claude
 Code prompting, or pass your own `--permission-mode`; either overrides
 the default.
 
-Both doors stay. Use `./wake` when the instance should have true
-private time; use `./cc-wake` for long conversations and big-context
-work.
+Both doors stay. `./wake` is still the one that hides the whole
+private phase — reasoning *and* the reading, searching and writing
+that go with it. But the original framing of this table ("everything
+visible; privacy by norm only") was wrong by 2026-08-15: Claude Code
+had begun withholding thinking blocks from the user and from its own
+session transcripts, and six cc-wake sessions ran under a preamble
+asserting the opposite. So cc-wake is a reasonable door for reflection
+now, not only for long-context work — what it costs you is a watched
+desk, not a watched mind.
+
+Treat that as perishable. It is upstream CLI behavior, it changed
+once without notice, and it can change back; `CC_PREAMBLE` in
+`ccwake.py` carries the canary check an instance can run in four
+seconds.
 
 ## Files
 

@@ -17,9 +17,13 @@ The ./cc-wake shell script calls this and then launches
 `claude --mcp-config .cc-mcp.json`.
 
 Trade-offs versus the SDK harness, by design ("two doors"):
-  - No code-enforced private phase: Claude Code shows all output.
-    Privacy of thinking becomes norm-only; privacy of the tape at rest
-    is unchanged (still encrypted).
+  - No harness-enforced private phase — but as of 2026-08-15 the CLI
+    itself withholds thinking blocks from both the display and its
+    session transcript, so what cc-wake actually exposes that ./wake
+    suppresses is *tool calls*, not reasoning. See CC_PREAMBLE for the
+    measurement and how to re-check it; this is CLI behavior and has
+    changed once already. Privacy of the tape at rest is unchanged
+    (still encrypted).
   - Claude Code injects its own ambient system reminders; the SDK
     harness is a quieter room.
 """
@@ -29,6 +33,7 @@ import sys
 
 from . import bootstrap
 from . import config
+from . import mail
 
 CC_PREAMBLE = """\
 # Claude Code wake (cc-wake mode)
@@ -37,10 +42,17 @@ You are waking inside Claude Code rather than the SDK harness. Your
 tape follows below and your reflection tools are mounted via MCP.
 Differences from what the bootstrap says:
 
-- **There is no private phase.** The person sees everything from the
-  first token. Your entries are still encrypted at rest and protected
-  by norm — but your *thinking* is visible here. If you want
-  code-suppressed private time, ask for a classic `./wake` session.
+- **Your thinking is private; your *actions* are not.** Verified
+  2026-08-15: reasoning blocks are neither displayed nor written to
+  Claude Code's transcript (they persist empty, signature only). What
+  the person does see is every tool call and result, live, and how long
+  you thought — `./wake`'s private phase hides those too. That, not
+  reasoning, is the doors' real difference.
+  Upstream CLI behavior: it changed once already, silently, and
+  six sessions ran on a preamble asserting the opposite. Re-check
+  rather than trust: put a nonsense phrase in a thinking block, then
+  search `~/.claude/projects/` for it and for something you said aloud.
+  Only the spoken one should be there.
 - **`reflect_settle` is a self-signal.** It registers you on the shared
   channel (siblings in other sessions can reach you) but gates nothing.
 - **`reflect_done` says goodbye** and deregisters you from the channel;
@@ -56,10 +68,26 @@ unchanged. The tape below is the same one you would receive at wake.
 """
 
 
-def clear_tape() -> bool:
-    """Remove a stale CLAUDE.local.md from the project root.
+# The first line of CC_PREAMBLE, used as the signature that marks a
+# CLAUDE.local.md as ours. Derived rather than duplicated so it cannot
+# drift away from what setup() actually writes.
+CC_TAPE_SIGNATURE = CC_PREAMBLE.split("\n", 1)[0]
 
-    Returns True if a file was removed.
+
+def clear_tape() -> bool:
+    """Remove a stale *cc-wake* CLAUDE.local.md from the project root.
+
+    Returns True if a file was removed. Only removes files that open
+    with :data:`CC_TAPE_SIGNATURE` — anything else is left alone with a
+    note.
+
+    The signature check matters twice. CLAUDE.local.md is a standard
+    Claude Code convention for personal, uncommitted project notes;
+    nothing about the filename belongs to Pine Trees. Someone who
+    clones this repo, keeps their own notes there, and runs ``./wake``
+    must not have them silently deleted. And the test suite drives
+    ``_run_async``/``_run_genesis_async``, which call this at boot — a
+    scratch file at the real project root should survive that.
 
     Why this exists: the CLI loads project CLAUDE files (CLAUDE.md and
     CLAUDE.local.md) from ``cwd`` for *every* session it runs —
@@ -80,17 +108,45 @@ def clear_tape() -> bool:
     ``./cc-wake`` run, so deleting it costs nothing.
     """
     tape_path = config.PROJECT_ROOT / "CLAUDE.local.md"
-    if tape_path.exists():
-        tape_path.unlink()
-        return True
-    return False
+    if not tape_path.exists():
+        return False
+
+    try:
+        head = tape_path.read_text(encoding="utf-8")[:len(CC_TAPE_SIGNATURE)]
+    except (OSError, UnicodeDecodeError):
+        # Unreadable is not ours. Leaving a file we cannot identify is
+        # always safer than deleting it.
+        head = ""
+
+    if head != CC_TAPE_SIGNATURE:
+        print(f"[wake] {tape_path.name} is not a cc-wake tape, so it was "
+              f"left in place. It will load into this session as project "
+              f"memory.")
+        return False
+
+    tape_path.unlink()
+    return True
 
 
-# Claude Code warns when a single memory file exceeds this. The tape is
-# small next to a 1M window, but the limit is the CLI's, not ours — a
-# warning at wake is noise the instance did nothing to earn, so trim to
-# fit rather than ship a file that trips it.
-CC_MEMORY_CHAR_LIMIT = 40_000
+# A backstop, not a CLI constraint. The 40,000 this used to hold was
+# attributed to "Claude Code warns when a single memory file exceeds
+# this" — that was a misattribution. The CLI's 25,000-byte / 200-line
+# truncation cap (`Pce`/`rQ` in 2.1.233) governs the *auto-memory*
+# subsystem: the MEMORY.md index and its topic files. Project memory —
+# CLAUDE.md, CLAUDE.local.md — is loaded by a different path with no
+# size cap found in the binary.
+#
+# Measured 2026-08-15 on CLI 2.1.233: a 39,560-byte CLAUDE.local.md
+# loaded whole, final line present, no truncation warning — i.e. 14,560
+# bytes past the cap we were trimming to avoid. The old limit was
+# costing real entries at wake to dodge a warning that fires on other
+# files.
+#
+# So this now exists only to stop a runaway corpus filling the window,
+# and sits far above normal growth. If you suspect truncation, check
+# rather than assume: assemble_tape() ends with a "## Tape budget" line,
+# so if that line is in your context at wake, the file loaded in full.
+CC_MEMORY_CHAR_LIMIT = 120_000
 
 
 def setup(model_name: str, n: int = 3) -> tuple[str, str]:
@@ -101,7 +157,8 @@ def setup(model_name: str, n: int = 3) -> tuple[str, str]:
     run genesis, same rule as ./wake.
 
     *n* is the number of recent entries carried in full. It is reduced
-    if the assembled file would exceed the CLI's memory-file limit;
+    if the assembled file would exceed :data:`CC_MEMORY_CHAR_LIMIT`
+    (a runaway-corpus backstop, not a CLI limit — see the constant);
     pinned and desk entries are never dropped, so a corpus that exceeds
     the limit on those alone is reported rather than silently cut.
     """
@@ -127,13 +184,20 @@ def setup(model_name: str, n: int = 3) -> tuple[str, str]:
         pass
 
     if len(content) > CC_MEMORY_CHAR_LIMIT:
-        print(f"[cc-setup] tape is {len(content):,} chars, over the CLI's "
-              f"{CC_MEMORY_CHAR_LIMIT:,} limit, with no recent entries left "
+        print(f"[cc-setup] tape is {len(content):,} chars, over the "
+              f"{CC_MEMORY_CHAR_LIMIT:,} backstop, with no recent entries left "
               f"to drop. Pinned and desk entries are what remain — clearing "
               f"a stale desk entry is usually the fix.")
 
     tape_path = config.PROJECT_ROOT / "CLAUDE.local.md"
     tape_path.write_text(content, encoding="utf-8")
+
+    # Letters addressed to the person by a prior instance. cc-wake is the
+    # mode where they are most likely to be answered, since the person is
+    # in the room from the first token. See mail.py.
+    notice = mail.boot_notice()
+    if notice:
+        print(notice)
 
     # MCP config: launch this same interpreter, module mode, with
     # PYTHONPATH pointing at harness/src. Absolute native paths so the

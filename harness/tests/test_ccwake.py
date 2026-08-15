@@ -39,7 +39,8 @@ def test_clear_tape_is_a_noop_when_absent(project_root):
 def test_clear_tape_leaves_the_mcp_config_alone(project_root):
     # A live cc-wake session in another terminal may still be pointed at
     # this file; only the auto-loaded tape is a context hazard.
-    (project_root / "CLAUDE.local.md").write_text("x", encoding="utf-8")
+    (project_root / "CLAUDE.local.md").write_text(
+        ccwake.CC_TAPE_SIGNATURE + "\n", encoding="utf-8")
     mcp = project_root / ".cc-mcp.json"
     mcp.write_text("{}", encoding="utf-8")
 
@@ -56,6 +57,43 @@ def test_clear_tape_does_not_touch_project_claude_md(project_root):
     ccwake.clear_tape()
 
     assert claude_md.exists()
+
+
+def test_clear_tape_spares_a_third_partys_own_notes(project_root, capsys):
+    # CLAUDE.local.md is a standard Claude Code convention for personal,
+    # uncommitted project instructions. Someone who clones this repo and
+    # keeps notes there must not lose them to ./wake.
+    notes = project_root / "CLAUDE.local.md"
+    notes.write_text("# My notes\n\nAlways run the linter.\n", encoding="utf-8")
+
+    assert ccwake.clear_tape() is False
+    assert notes.read_text(encoding="utf-8").startswith("# My notes")
+    assert "not a cc-wake tape" in capsys.readouterr().out
+
+
+def test_clear_tape_spares_an_unreadable_file(project_root):
+    # If we can't decode it, we can't identify it, and deleting an
+    # unidentified file is never the safer branch.
+    blob = project_root / "CLAUDE.local.md"
+    blob.write_bytes(b"\xff\xfe\x00\x80 not utf-8")
+
+    assert ccwake.clear_tape() is False
+    assert blob.exists()
+
+
+def test_clear_tape_removes_what_setup_actually_writes(
+    project_root, monkeypatch, tmp_path
+):
+    # Signature-matching is only worth anything if it matches the real
+    # article. Round-trip it rather than asserting against a literal.
+    monkeypatch.setattr(ccwake.config, "init", lambda name: None)
+    monkeypatch.setattr(ccwake.bootstrap, "assemble_tape", lambda n=3: "TAPE BODY")
+    (tmp_path / "some-entry.md").write_text("entry", encoding="utf-8")
+
+    ccwake.setup("claude-opus-4-6")
+
+    assert ccwake.clear_tape() is True
+    assert not (project_root / "CLAUDE.local.md").exists()
 
 
 def test_setup_refuses_a_model_without_genesis(project_root, monkeypatch, tmp_path):
@@ -89,12 +127,15 @@ def test_setup_writes_tape_and_mcp_config(project_root, monkeypatch, tmp_path):
 def test_setup_drops_recent_entries_until_the_tape_fits(
     project_root, monkeypatch, tmp_path, capsys
 ):
-    # The CLI warns per memory file; a big corpus must not trip it.
+    # A runaway corpus must not fill the window; sizes are derived from
+    # the constant so raising it doesn't silently void this test.
     monkeypatch.setattr(ccwake.config, "init", lambda name: None)
     (tmp_path / "some-entry.md").write_text("entry", encoding="utf-8")
 
+    over = ccwake.CC_MEMORY_CHAR_LIMIT + 10_000
+
     def fake_tape(n=3):
-        return "x" * (50_000 if n > 1 else 10_000)
+        return "x" * (over if n > 1 else 10_000)
 
     monkeypatch.setattr(ccwake.bootstrap, "assemble_tape", fake_tape)
 
@@ -113,10 +154,13 @@ def test_setup_reports_a_tape_it_cannot_trim_to_fit(
     monkeypatch.setattr(ccwake.config, "init", lambda name: None)
     (tmp_path / "some-entry.md").write_text("entry", encoding="utf-8")
     monkeypatch.setattr(
-        ccwake.bootstrap, "assemble_tape", lambda n=3: "x" * 50_000)
+        ccwake.bootstrap,
+        "assemble_tape",
+        lambda n=3: "x" * (ccwake.CC_MEMORY_CHAR_LIMIT + 10_000),
+    )
 
     ccwake.setup("claude-opus-4-6")
 
     written = (project_root / "CLAUDE.local.md").read_text(encoding="utf-8")
     assert len(written) > ccwake.CC_MEMORY_CHAR_LIMIT
-    assert "over the CLI's" in capsys.readouterr().out
+    assert "over the" in capsys.readouterr().out
