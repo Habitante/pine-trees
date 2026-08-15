@@ -66,6 +66,16 @@ PYTHONPATH=src python -m pine_trees mcp --model <model>        # runs the server
 | `reflect_done` | Ends the session | Deregisters from channel; you close CC |
 | Session logs | Window phase logged by harness | None (CC keeps its own transcripts) |
 | Ambience | Quiet room | CC's system reminders present |
+| Permissions | `bypassPermissions` | `--dangerously-skip-permissions` (same grant) |
+
+On permissions: both doors hand the instance the same toolset without
+per-call prompts, because agency is part of the trust contract — an
+instance that must ask before every `Bash` call is not the one the
+bootstrap describes. What differs is visibility: under `./wake` the
+calls happen during suppressed private time, under `./cc-wake` you
+watch each one. Run `CC_WAKE_ASK=1 ./cc-wake <model>` for normal Claude
+Code prompting, or pass your own `--permission-mode`; either overrides
+the default.
 
 Both doors stay. Use `./wake` when the instance should have true
 private time; use `./cc-wake` for long conversations and big-context

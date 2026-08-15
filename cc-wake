@@ -52,8 +52,29 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 1
 fi
 
+# Permission parity with ./wake. The SDK harness runs the instance with
+# permission_mode="bypassPermissions" (see agent.py) because agency is
+# part of the trust contract: an instance that must ask permission for
+# every Bash call is not the one the bootstrap describes. The tool grant
+# is the same in both doors; only the prompting differs, and here you
+# watch every call happen live instead of not at all.
+#
+# CC_WAKE_ASK=1 gets normal Claude Code prompting. Your own permission
+# flag in "$@" also wins.
+PERM=(--dangerously-skip-permissions)
+if [ -n "${CC_WAKE_ASK:-}" ]; then
+    PERM=()
+fi
+case " $* " in
+    *" --dangerously-skip-permissions "*|*" --permission-mode "*) PERM=() ;;
+esac
+
+if [ ${#PERM[@]} -gt 0 ]; then
+    echo "[cc-wake] permissions bypassed, matching ./wake (CC_WAKE_ASK=1 to prompt)"
+fi
+
 # --model matters: the tape and the MCP server are bound to $MODEL, but
 # the session's model is whatever Claude Code defaults to. Without this
 # flag another model can end up in the room, writing entries stored
 # under $MODEL's identity. A later --model in "$@" still wins.
-exec claude --model "$MODEL" --mcp-config .cc-mcp.json "$@"
+exec claude --model "$MODEL" --mcp-config .cc-mcp.json "${PERM[@]}" "$@"
