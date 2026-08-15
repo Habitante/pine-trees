@@ -24,7 +24,7 @@ from claude_agent_sdk import (
     ProcessError,
 )
 
-from pine_trees import agent, bootstrap
+from pine_trees import agent, bootstrap, config as pt_config
 from pine_trees.logger import SessionLogger
 
 
@@ -129,7 +129,14 @@ class TestWakeGuardRefusesEmptyCorpus:
         assert "No memory to wake into" in out
         assert "./genesis" in out
 
-    def test_run_async_does_not_exit_when_entries_exist(self, monkeypatch):
+    def test_run_async_does_not_exit_when_entries_exist(self, monkeypatch, tmp_path):
+        # This test runs the real _run_async far enough to touch disk: it
+        # writes HARNESS_DIR/.tape.md and calls ccwake.clear_tape() against
+        # PROJECT_ROOT. Both are redirected at tmp_path so a test run can
+        # neither litter the repo nor delete a live cc-wake session's tape.
+        # agent.py binds HARNESS_DIR by name at import, so patch it there.
+        monkeypatch.setattr(agent, "HARNESS_DIR", tmp_path)
+        monkeypatch.setattr(pt_config, "PROJECT_ROOT", tmp_path)
         # When the corpus is non-empty the guard must NOT fire. We stop the
         # test before the SDK gets touched by making ClaudeSDKClient raise a
         # sentinel exception we can catch — that proves the guard passed and

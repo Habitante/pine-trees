@@ -35,7 +35,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, channel, config, crypto, migrate, sessions
+from . import bootstrap, ccwake, channel, config, crypto, migrate, sessions
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -888,6 +888,13 @@ async def _run_async(
     # split. No-op on a fresh clone or a already-migrated install.
     migrate.migrate_legacy_layout_if_needed()
 
+    # A CLAUDE.local.md left over from a ./cc-wake run would be loaded
+    # into this session by the CLI and read as if it were our own tape.
+    # See ccwake.clear_tape.
+    if ccwake.clear_tape():
+        print(f"{DIM}[wake] removed stale CLAUDE.local.md "
+              f"(cc-wake leftover){RST}")
+
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
     # on a mind with nothing to remember. Also covers the case where the
@@ -1224,6 +1231,14 @@ async def _run_genesis_async(n: int) -> None:
     # One-shot catch-up for public users upgrading across the multi-model
     # split. No-op on a fresh clone or a already-migrated install.
     migrate.migrate_legacy_layout_if_needed()
+
+    # Same leftover-tape hazard as ./wake, and worse here: a genesis
+    # instance has no memory of its own to contradict the file, so
+    # another model's corpus arrives as its only apparent inheritance.
+    # See ccwake.clear_tape.
+    if ccwake.clear_tape():
+        print(f"{DIM}[genesis] removed stale CLAUDE.local.md "
+              f"(cc-wake leftover){RST}")
 
     existing = bootstrap.list_entries()
     if existing:
