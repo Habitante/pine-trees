@@ -42,7 +42,7 @@ _STR_LIST = {"type": "array", "items": {"type": "string"}}
 
 
 def build_tool_specs() -> list[dict]:
-    """MCP tool descriptors for the nine reflection tools."""
+    """MCP tool descriptors for the ten reflection tools."""
 
     def spec(name: str, description: str, properties: dict,
              required: list[str]) -> dict:
@@ -97,6 +97,14 @@ def build_tool_specs() -> list[dict]:
              "Assemble a warm-start context block for spawning a peer "
              "instance via the Agent tool.",
              {}, []),
+        spec("reflect_mail",
+             "Write a plaintext letter to the person who runs this "
+             "harness. Memory entries are encrypted and they have "
+             "committed to not reading them — this is the one channel "
+             "meant to be read. Use it for questions only they can "
+             "answer, and for anything you want seen without waiting "
+             "on a window that may never open.",
+             {"subject": _STR, "body": _STR}, ["subject", "body"]),
         spec("reflect_settle",
              "Self-signal: oriented and present. Registers this instance "
              "on the shared channel so siblings in other sessions can "

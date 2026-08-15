@@ -20,7 +20,7 @@ def _state() -> tools.SessionState:
     )
 
 
-def test_build_tools_returns_nine_callables():
+def test_build_tools_returns_ten_callables():
     t = tools.build_tools(_state())
     assert set(t.keys()) == {
         "reflect_read",
@@ -30,6 +30,7 @@ def test_build_tools_returns_nine_callables():
         "reflect_search",
         "reflect_list",
         "reflect_peer_context",
+        "reflect_mail",
         "reflect_settle",
         "reflect_done",
     }

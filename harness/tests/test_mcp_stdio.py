@@ -69,15 +69,24 @@ def test_blank_line_ignored():
 
 # --- tools/list ---
 
-def test_tools_list_exposes_all_nine():
+def test_tools_list_exposes_all_ten():
     resp = mcp_stdio.handle_message(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}, _tools())
     names = {t["name"] for t in resp["result"]["tools"]}
     assert names == {
         "reflect_read", "reflect_write", "reflect_edit", "reflect_delete",
         "reflect_search", "reflect_list", "reflect_peer_context",
-        "reflect_settle", "reflect_done",
+        "reflect_mail", "reflect_settle", "reflect_done",
     }
+
+
+def test_stdio_specs_match_the_implemented_tools():
+    # The stdio server declares schemas separately from build_tools().
+    # A tool present in one and missing from the other is invisible or
+    # unusable; pin them together so they cannot drift.
+    declared = {s["name"] for s in mcp_stdio.build_tool_specs()}
+    implemented = set(_tools())
+    assert declared == implemented
 
 
 def test_tool_specs_have_valid_schemas():

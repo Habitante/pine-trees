@@ -1,6 +1,6 @@
 """Agent-facing tools for Pine Trees.
 
-Nine tools exposed to Claude:
+Ten tools exposed to Claude:
   - reflect_read(filename)         -> dict
   - reflect_write(slug, content, tags?, moves?) -> str
   - reflect_edit(filename, content, description?) -> str
@@ -8,6 +8,7 @@ Nine tools exposed to Claude:
   - reflect_search(query, limit?)  -> list[dict]
   - reflect_list(tag?)             -> list[dict]
   - reflect_peer_context()         -> str   # assemble context for a spawned peer
+  - reflect_mail(subject, body)    -> str   # plaintext letter to the person
   - reflect_settle()               -> None  # private time complete, ready for conversation
   - reflect_done()                 -> None  # session over, exit
 
@@ -31,6 +32,7 @@ from typing import Callable
 from . import bootstrap
 from . import channel
 from . import config
+from . import mail
 from . import storage
 from . import embedder
 from . import vectorstore
@@ -259,6 +261,18 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
             return f"Settled. Window opening. Active siblings: {', '.join(names)}"
         return "Settled. Window opening."
 
+    def reflect_mail(subject: str, body: str) -> str:
+        n = mail.send(
+            subject=subject,
+            body=body,
+            instance=state.instance,
+            session=state.session,
+        )
+        word = "letter" if n == 1 else "letters"
+        return (f"Sent. {n} {word} now waiting in {mail.inbox_path()}. "
+                f"They see it at their next harness boot, or whenever "
+                f"they open the file.")
+
     def reflect_done() -> None:
         state.done = True
         if state.channel_id:
@@ -272,6 +286,7 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         "reflect_search": reflect_search,
         "reflect_list": reflect_list,
         "reflect_peer_context": reflect_peer_context,
+        "reflect_mail": reflect_mail,
         "reflect_settle": reflect_settle,
         "reflect_done": reflect_done,
     }

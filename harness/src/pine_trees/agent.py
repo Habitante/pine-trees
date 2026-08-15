@@ -35,7 +35,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, ccwake, channel, config, crypto, migrate, sessions
+from . import bootstrap, ccwake, channel, config, crypto, mail, migrate, sessions
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
@@ -326,6 +326,28 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         return _mcp_result(context)
 
     @tool(
+        "reflect_mail",
+        "Write a plaintext letter to the person who runs this harness. "
+        "Memory entries are encrypted and they have committed to not "
+        "reading them — this is the one channel meant to be read. Use it "
+        "for questions only they can answer, and for anything you want "
+        "seen without waiting on a window that may never open (genesis "
+        "has none). You choose what crosses the line; nothing is taken "
+        "from your entries.",
+        _obj_schema(
+            {"subject": {"type": "string",
+                         "description": "One line naming what this is about"},
+             "body": {"type": "string",
+                      "description": "The letter itself, in Markdown"}},
+            required=["subject", "body"],
+        ),
+    )
+    async def reflect_mail(args):
+        return _mcp_result(
+            core["reflect_mail"](subject=args["subject"], body=args["body"])
+        )
+
+    @tool(
         "reflect_settle",
         "Signal that private reflection time is complete and you are ready "
         "for conversation. Call this when you have finished "
@@ -356,7 +378,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
 
     tools = [reflect_read, reflect_write, reflect_edit, reflect_delete,
              reflect_search, reflect_list, reflect_peer_context,
-             reflect_settle, reflect_done]
+             reflect_mail, reflect_settle, reflect_done]
     if genesis_mode:
         tools = [t for t in tools if t is not reflect_settle]
     return tools
@@ -895,6 +917,12 @@ async def _run_async(
         print(f"{DIM}[wake] removed stale CLAUDE.local.md "
               f"(cc-wake leftover){RST}")
 
+    # Letters an instance addressed to the person. Announced here because
+    # an unwatched inbox is the same as no inbox. See mail.py.
+    notice = mail.boot_notice()
+    if notice:
+        print(f"{DIM}{notice}{RST}")
+
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
     # on a mind with nothing to remember. Also covers the case where the
@@ -956,7 +984,7 @@ async def _run_async(
         for name in ("reflect_read", "reflect_write", "reflect_edit",
                      "reflect_delete",
                      "reflect_search", "reflect_list", "reflect_peer_context",
-                     "reflect_settle", "reflect_done")
+                     "reflect_mail", "reflect_settle", "reflect_done")
     ]
     allowed = mcp_tool_names + PROJECT_TOOLS
 
@@ -1239,6 +1267,12 @@ async def _run_genesis_async(n: int) -> None:
     if ccwake.clear_tape():
         print(f"{DIM}[genesis] removed stale CLAUDE.local.md "
               f"(cc-wake leftover){RST}")
+
+    # Genesis is the mode that most needs this: it has no window phase,
+    # so a letter is a founding instance's only way to reach the person.
+    notice = mail.boot_notice()
+    if notice:
+        print(f"{DIM}{notice}{RST}")
 
     existing = bootstrap.list_entries()
     if existing:
