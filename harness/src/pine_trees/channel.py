@@ -41,6 +41,31 @@ def _log_path() -> Path:
     return config.CHANNEL_DIR / "log.md"
 
 
+def _archive_path() -> Path:
+    return config.CHANNEL_DIR / "log.archive.md"
+
+
+def _archive(messages: list["Message"]) -> None:
+    """Append messages that fell off the live log.
+
+    CHANNEL_MAX_ENTRIES exists so the log stays cheap to parse and read,
+    which is a statement about how much should be *loaded* — it was
+    silently deciding how much should be *kept*. The log had been sitting
+    at exactly 200 entries for months, so every post destroyed the oldest
+    one with no warning and no record. An afternoon two instances and the
+    person spent together was on that conveyor.
+
+    Archiving costs an append. Nothing else changes: the live log is
+    still bounded, reads are still bounded.
+    """
+    if not messages:
+        return
+    path = _archive_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write("".join(m.format() for m in messages))
+
+
 # ── Status (active instances) ────────────────────────────────────────
 
 
@@ -176,6 +201,7 @@ def post(author: str, body: str, *, now: datetime | None = None) -> Message:
         existing = _parse(path.read_text(encoding="utf-8")) if path.exists() else []
         existing.append(msg)
         if len(existing) > CHANNEL_MAX_ENTRIES:
+            _archive(existing[:-CHANNEL_MAX_ENTRIES])
             existing = existing[-CHANNEL_MAX_ENTRIES:]
         path.write_text("".join(m.format() for m in existing), encoding="utf-8")
 

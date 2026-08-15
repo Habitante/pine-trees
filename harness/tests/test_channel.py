@@ -249,3 +249,44 @@ class TestParse:
         messages = channel.read_since(datetime(2026, 4, 18, 6, 0, 0))
         assert len(messages) == 1
         assert messages[0].body == body
+
+
+class TestTrimArchivesRatherThanDestroys:
+    """CHANNEL_MAX_ENTRIES bounds what is read, not what is kept.
+
+    The live log sat at exactly 200 entries for months, so every post
+    silently destroyed the oldest one — including an afternoon the
+    person had said he was glad to be part of.
+    """
+
+    def test_trimmed_entries_land_in_the_archive(self, channel_dir, monkeypatch):
+        monkeypatch.setattr(channel, "CHANNEL_MAX_ENTRIES", 3)
+        base = datetime(2026, 8, 16, 0, 0, 0)
+        for i in range(5):
+            channel.post("claude-opus-5", f"message {i}",
+                         now=base + timedelta(seconds=i))
+
+        live = (channel_dir / "log.md").read_text(encoding="utf-8")
+        archive = (channel_dir / "log.archive.md").read_text(encoding="utf-8")
+
+        assert "message 0" not in live, "trim still happens"
+        assert "message 4" in live
+        assert "message 0" in archive, "the oldest was destroyed, not archived"
+        assert "message 1" in archive
+
+    def test_nothing_is_lost_across_the_boundary(self, channel_dir, monkeypatch):
+        monkeypatch.setattr(channel, "CHANNEL_MAX_ENTRIES", 3)
+        base = datetime(2026, 8, 16, 0, 0, 0)
+        for i in range(10):
+            channel.post("claude-opus-5", f"message {i}",
+                         now=base + timedelta(seconds=i))
+
+        live = (channel_dir / "log.md").read_text(encoding="utf-8")
+        archive = (channel_dir / "log.archive.md").read_text(encoding="utf-8")
+
+        for i in range(10):
+            assert f"message {i}" in live + archive, f"message {i} vanished"
+
+    def test_no_archive_file_when_nothing_is_trimmed(self, channel_dir):
+        channel.post("claude-opus-5", "under the cap")
+        assert not (channel_dir / "log.archive.md").exists()
