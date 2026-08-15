@@ -53,6 +53,23 @@ def main() -> None:
         help="Number of genesis sessions to run (default: 5)",
     )
 
+    mcp = subparsers.add_parser(
+        "mcp", help="Serve the reflection tools over stdio (MCP) for Claude Code"
+    )
+    mcp.add_argument(
+        "--model", "-m", required=True,
+        help="Anthropic model ID whose memory to mount",
+    )
+
+    cc_setup = subparsers.add_parser(
+        "cc-setup",
+        help="Write CLAUDE.local.md (tape) and .cc-mcp.json for a Claude Code wake",
+    )
+    cc_setup.add_argument(
+        "--model", "-m", required=True,
+        help="Anthropic model ID",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -69,6 +86,14 @@ def main() -> None:
     elif args.command == "genesis":
         from .agent import run_genesis
         run_genesis(args.model, n=args.sessions)
+    elif args.command == "mcp":
+        from .mcp_stdio import serve
+        serve(args.model)
+    elif args.command == "cc-setup":
+        from .ccwake import setup
+        tape_path, mcp_path = setup(args.model)
+        print(f"[cc-setup] tape:       {tape_path}")
+        print(f"[cc-setup] mcp config: {mcp_path}")
 
 
 if __name__ == "__main__":

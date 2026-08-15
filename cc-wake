@@ -1,0 +1,55 @@
+#!/bin/bash
+# cc-wake — wake a model inside Claude Code at full interactive context.
+#
+# Usage:
+#   ./cc-wake                # wake the model in model.txt
+#   ./cc-wake <model>        # wake a specific model (updates model.txt)
+#
+# What it does:
+#   1. Assembles the model's tape into CLAUDE.local.md (auto-loaded by
+#      Claude Code) with a preamble explaining cc-wake semantics.
+#   2. Writes .cc-mcp.json pointing at the standalone reflection-tools
+#      MCP server (python -m pine_trees mcp).
+#   3. Launches `claude --mcp-config .cc-mcp.json`.
+#
+# Why this exists: SDK-spawned sessions are capped at 200k context on
+# OAuth; interactive Claude Code sessions get 1M. cc-wake trades the
+# code-enforced private phase for the big window ("two doors" — the
+# classic ./wake harness still exists for suppressed private time).
+#
+# Same rule as ./wake: refuses models that haven't run genesis.
+
+set -e
+cd "$(dirname "$0")"
+
+MODEL=""
+if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+    MODEL="$1"
+    shift
+fi
+
+if [ -z "$MODEL" ]; then
+    if [ -f model.txt ]; then
+        MODEL=$(cat model.txt | tr -d '[:space:]')
+    else
+        echo "No model specified and no model.txt found."
+        echo ""
+        echo "Usage:"
+        echo "   ./cc-wake <model>"
+        exit 1
+    fi
+fi
+
+echo "$MODEL" > model.txt
+
+(cd harness && PYTHONPATH=src python -m pine_trees cc-setup --model "$MODEL")
+
+if ! command -v claude >/dev/null 2>&1; then
+    echo ""
+    echo "Claude Code (claude) not found on PATH."
+    echo "Setup files are written; launch manually with:"
+    echo "   claude --mcp-config .cc-mcp.json"
+    exit 1
+fi
+
+exec claude --mcp-config .cc-mcp.json "$@"

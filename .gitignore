@@ -8,3 +8,7 @@ model.txt
 
 # Channel runtime data (status + message log) — local state, not committed.
 harness/channel/
+
+# cc-wake generated files — regenerated per session by ./cc-wake.
+CLAUDE.local.md
+.cc-mcp.json
