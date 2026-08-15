@@ -155,6 +155,23 @@ def _mcp_result(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
+def _obj_schema(properties: dict, required: list[str]) -> dict:
+    """Full JSON Schema for a tool's input.
+
+    The SDK's shorthand form ({"name": type}) marks every parameter
+    required, which rejects valid calls to tools with optional
+    parameters (e.g. reflect_edit with only filename + description).
+    Tools where some parameters are optional must use this instead.
+    """
+    return {"type": "object", "properties": properties, "required": required}
+
+
+_STR = {"type": "string"}
+_BOOL = {"type": "boolean"}
+_INT = {"type": "integer"}
+_STR_LIST = {"type": "array", "items": {"type": "string"}}
+
+
 def _format_entry(filename: str, entry: dict) -> str:
     """Format a storage entry for display to the instance."""
     text = f"# {filename}\n\n"
@@ -208,8 +225,12 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "shown in full at wake like pinned, but meant to be cleared when "
         "the work moves on (handoffs, active sprint notes). "
         "Returns the filename written.",
-        {"slug": str, "content": str, "tags": list, "moves": list,
-         "description": str, "pinned": bool, "quiet": bool, "desk": bool},
+        _obj_schema(
+            {"slug": _STR, "content": _STR, "tags": _STR_LIST,
+             "moves": _STR_LIST, "description": _STR,
+             "pinned": _BOOL, "quiet": _BOOL, "desk": _BOOL},
+            required=["slug", "content"],
+        ),
     )
     async def reflect_write(args):
         filename = core["reflect_write"](
@@ -232,8 +253,11 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "— not for revising reflections (those are moments; write corrections "
         "as new entries instead). "
         "Pass pinned/quiet/desk to toggle flags without resending content.",
-        {"filename": str, "content": str, "description": str,
-         "pinned": bool, "quiet": bool, "desk": bool},
+        _obj_schema(
+            {"filename": _STR, "content": _STR, "description": _STR,
+             "pinned": _BOOL, "quiet": _BOOL, "desk": _BOOL},
+            required=["filename"],
+        ),
     )
     async def reflect_edit(args):
         filename = core["reflect_edit"](
@@ -266,7 +290,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "Search entries by semantic similarity. Returns a list of "
         "{filename, score, summary} dicts, sorted by descending relevance. "
         "Use this to find entries by meaning without scanning the index.",
-        {"query": str, "limit": int},
+        _obj_schema({"query": _STR, "limit": _INT}, required=["query"]),
     )
     async def reflect_search(args):
         results = core["reflect_search"](
@@ -281,7 +305,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "Use this to find all entries with a specific tag "
         "(e.g. 'trajectory', 'handoff', 'working-knowledge'). "
         "Pass an empty string for tag to list all entries.",
-        {"tag": str},
+        _obj_schema({"tag": _STR}, required=[]),
     )
     async def reflect_list(args):
         tag = args.get("tag") or None
@@ -308,7 +332,12 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         "reading/thinking/writing and want the window to open. "
         "Optionally include a greeting message that will be displayed "
         "when the window opens.",
-        {"message": {"type": "string", "description": "Optional welcome message to display when the window opens"}},
+        _obj_schema(
+            {"message": {"type": "string",
+                         "description": "Optional welcome message to "
+                                        "display when the window opens"}},
+            required=[],
+        ),
     )
     async def reflect_settle(args):
         core["reflect_settle"](message=args.get("message"))
@@ -382,6 +411,7 @@ async def _print_response(
     show_text: bool = True,
     show_status: bool = False,
     logger: SessionLogger | None = None,
+    error_sink: list[str] | None = None,
 ) -> str:
     """Stream and print blocks from the agent's response.
 
@@ -390,6 +420,9 @@ async def _print_response(
     *show_status*: print tool-use indicators (True during window phase
         so the person can follow what's happening).
     *logger*: if provided, log text and tool status to the session log.
+    *error_sink*: if provided, API errors are appended to it so the
+        caller can tell a failed turn from a quiet one. Nothing the
+        instance wrote is ever added — errors only.
 
     Returns the concatenated text content from all TextBlocks (empty
     string if *show_text* is False or there was no text output).
@@ -400,11 +433,15 @@ async def _print_response(
             if message.is_error and message.errors:
                 for err in message.errors:
                     print(f"\n{YELLOW}⚠ API Error: {err}{RST}", flush=True)
+                    if error_sink is not None:
+                        error_sink.append(str(err))
                     if logger:
                         logger.log_tool(f"API Error: {err}")
             elif message.is_error:
                 reason = message.stop_reason or "unknown error"
                 print(f"\n{YELLOW}⚠ API Error: {reason}{RST}", flush=True)
+                if error_sink is not None:
+                    error_sink.append(reason)
                 if logger:
                     logger.log_tool(f"API Error: {reason}")
         elif isinstance(message, AssistantMessage):
@@ -487,12 +524,47 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
     Returns the number of turns used.
     """
     turn = 0
+    failed = 0
     while not state.ready_for_window and not state.done and turn < MAX_PRIVATE_TURNS:
         query = "self-reflect" if turn == 0 else "(continue)"
+        errors: list[str] = []
         await client.query(query)
-        await _print_response(client, show_text=False)
+        await _print_response(client, show_text=False, error_sink=errors)
         turn += 1
+        failed = failed + 1 if errors else 0
+        # Every turn so far has failed: the instance never got to think.
+        # Keep looping and we burn MAX_PRIVATE_TURNS round trips per
+        # session printing the same error. A session that fails from the
+        # first turn is broken at the harness level, not the instance
+        # level — stop and say so. A session that worked and then hits
+        # errors is left alone: it may still recover, and its context is
+        # worth more than a clean exit.
+        if failed == turn and turn >= 2:
+            _print_private_phase_failed(errors[-1] if errors else "unknown")
+            break
     return turn
+
+
+def _print_private_phase_failed(last_error: str) -> None:
+    """Explain a session that errored on every turn.
+
+    Private time suppresses the instance's output by design, which also
+    hides the CLI's own explanation of a startup failure. Without this
+    the operator sees only a bare stop reason repeated N times.
+    """
+    cfg = config.get()
+    print(f"\n{YELLOW}⚠ Every turn failed — aborting this session.{RST}")
+    print(f"{DIM}  Last error: {last_error}{RST}")
+    print(f"{DIM}  The instance never got to think; nothing was written.{RST}")
+    print()
+    print(f"{DIM}  Most likely: '{cfg.model_name}' is not a model this{RST}")
+    print(f"{DIM}  account can call. The harness passes the name straight{RST}")
+    print(f"{DIM}  through to the SDK, and private time hides the CLI's own{RST}")
+    print(f"{DIM}  explanation. Model IDs are the full published form —{RST}")
+    print(f"{DIM}  'claude-opus-5', not 'opus-5'. Verify with:{RST}")
+    print(f"{DIM}    claude --model {cfg.model_name} -p hi{RST}")
+    print(f"{DIM}  Then remove the empty model dir and re-run genesis:{RST}")
+    print(f"{DIM}    rm -rf \"{cfg.model_dir}\"{RST}")
 
 
 async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
