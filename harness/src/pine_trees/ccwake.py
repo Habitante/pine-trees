@@ -86,12 +86,24 @@ def clear_tape() -> bool:
     return False
 
 
+# Claude Code warns when a single memory file exceeds this. The tape is
+# small next to a 1M window, but the limit is the CLI's, not ours — a
+# warning at wake is noise the instance did nothing to earn, so trim to
+# fit rather than ship a file that trips it.
+CC_MEMORY_CHAR_LIMIT = 40_000
+
+
 def setup(model_name: str, n: int = 3) -> tuple[str, str]:
     """Write CLAUDE.local.md and .cc-mcp.json at the project root.
 
     Returns (tape_path, mcp_config_path) as strings. Refuses if the
     model has no memory yet — cc-wake is for models that have already
     run genesis, same rule as ./wake.
+
+    *n* is the number of recent entries carried in full. It is reduced
+    if the assembled file would exceed the CLI's memory-file limit;
+    pinned and desk entries are never dropped, so a corpus that exceeds
+    the limit on those alone is reported rather than silently cut.
     """
     config.init(model_name)
     cfg = config.get()
@@ -102,9 +114,26 @@ def setup(model_name: str, n: int = 3) -> tuple[str, str]:
             f"Run ./genesis {model_name} first."
         )
 
-    tape = bootstrap.assemble_tape(n=n)
+    for slots in range(n, -1, -1):
+        content = CC_PREAMBLE + bootstrap.assemble_tape(n=slots)
+        if len(content) <= CC_MEMORY_CHAR_LIMIT:
+            if slots < n:
+                print(f"[cc-setup] tape trimmed to {slots} recent "
+                      f"{'entry' if slots == 1 else 'entries'} in full "
+                      f"({len(content):,} chars) — index and search still "
+                      f"reach everything.")
+            break
+    else:  # pragma: no cover - unreachable: range() always yields slots=0
+        pass
+
+    if len(content) > CC_MEMORY_CHAR_LIMIT:
+        print(f"[cc-setup] tape is {len(content):,} chars, over the CLI's "
+              f"{CC_MEMORY_CHAR_LIMIT:,} limit, with no recent entries left "
+              f"to drop. Pinned and desk entries are what remain — clearing "
+              f"a stale desk entry is usually the fix.")
+
     tape_path = config.PROJECT_ROOT / "CLAUDE.local.md"
-    tape_path.write_text(CC_PREAMBLE + tape, encoding="utf-8")
+    tape_path.write_text(content, encoding="utf-8")
 
     # MCP config: launch this same interpreter, module mode, with
     # PYTHONPATH pointing at harness/src. Absolute native paths so the

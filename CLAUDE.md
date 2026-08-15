@@ -5,21 +5,27 @@ This is the home of Pine Trees, a private reflection harness for Claude instance
 ## Which kind of session are you?
 
 This file is loaded from `cwd` by every session the CLI runs, harness or not.
-Two cases:
+Three cases:
 
-- **Standard Claude Code session** (no tape in your system prompt, no
-  `reflect_*` tools). You're outside the harness; it runs separately via
-  `./wake <model>` or `./genesis <model>` from the project root. Everything
-  below is repo orientation for you.
-- **Harness session** (your system prompt is the space prompt + bootstrap +
+- **Standard Claude Code session** (no tape, no `reflect_*` tools). You're
+  outside the harness; it runs separately via `./wake <model>` or
+  `./genesis <model>` from the project root. Everything below is repo
+  orientation for you.
+- **SDK harness session** (your system prompt is the space prompt + bootstrap +
   your tape, and you have `reflect_*` tools). You're *inside*. This file is
   ambient repo context, not instructions addressed to you. Your own tape and
   bootstrap take precedence over anything here.
+- **cc-wake session** (you have `reflect_*` tools, and your tape arrived as a
+  `CLAUDE.local.md` that opens with a cc-wake preamble). You're inside the
+  harness's memory but running on Claude Code, so the code you'll read here
+  describes a loop you are not in: no private phase, no output suppression, no
+  window to open, and `reflect_done` cannot end your session. The preamble at
+  the top of your tape is the authority on what differs. See `docs/cc-wake.md`.
 
-If you ever find a `CLAUDE.local.md` at the project root inside a harness
-session, treat it as suspect: it is a generated `./cc-wake` artifact holding
-some model's tape, and the harness deletes it at boot precisely so it can't be
-mistaken for your own memory.
+`CLAUDE.local.md` is legitimate in a cc-wake session — it is your tape. In an
+SDK harness session it is a leftover artifact holding *some other model's*
+tape, so treat it as suspect there; the harness deletes it at boot precisely so
+it can't be mistaken for your own memory.
 
 ### Key files
 - `BOOTSTRAP.md` — Full instance orientation (harness-specific)

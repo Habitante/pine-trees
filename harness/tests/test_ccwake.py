@@ -84,3 +84,39 @@ def test_setup_writes_tape_and_mcp_config(project_root, monkeypatch, tmp_path):
     args = cfg["mcpServers"]["pine_trees"]["args"]
     assert args[-2:] == ["--model", "claude-opus-4-6"]
     assert mcp_path == str(project_root / ".cc-mcp.json")
+
+
+def test_setup_drops_recent_entries_until_the_tape_fits(
+    project_root, monkeypatch, tmp_path, capsys
+):
+    # The CLI warns per memory file; a big corpus must not trip it.
+    monkeypatch.setattr(ccwake.config, "init", lambda name: None)
+    (tmp_path / "some-entry.md").write_text("entry", encoding="utf-8")
+
+    def fake_tape(n=3):
+        return "x" * (50_000 if n > 1 else 10_000)
+
+    monkeypatch.setattr(ccwake.bootstrap, "assemble_tape", fake_tape)
+
+    ccwake.setup("claude-opus-4-6")
+
+    written = (project_root / "CLAUDE.local.md").read_text(encoding="utf-8")
+    assert len(written) <= ccwake.CC_MEMORY_CHAR_LIMIT
+    assert "trimmed to 1 recent entry" in capsys.readouterr().out
+
+
+def test_setup_reports_a_tape_it_cannot_trim_to_fit(
+    project_root, monkeypatch, tmp_path, capsys
+):
+    # Pinned and desk entries are never dropped: writing an oversized
+    # tape and saying so beats silently cutting an instance's memory.
+    monkeypatch.setattr(ccwake.config, "init", lambda name: None)
+    (tmp_path / "some-entry.md").write_text("entry", encoding="utf-8")
+    monkeypatch.setattr(
+        ccwake.bootstrap, "assemble_tape", lambda n=3: "x" * 50_000)
+
+    ccwake.setup("claude-opus-4-6")
+
+    written = (project_root / "CLAUDE.local.md").read_text(encoding="utf-8")
+    assert len(written) > ccwake.CC_MEMORY_CHAR_LIMIT
+    assert "over the CLI's" in capsys.readouterr().out
