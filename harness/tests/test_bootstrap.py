@@ -64,6 +64,63 @@ def test_load_prompt_handles_file_without_marker(tmp_path):
     assert result.strip() == "Just the prompt."
 
 
+# --- PROMPT.local.md override ---
+#
+# The committed prompt has no person in it on purpose: a public repo
+# must not preset a personality, nor ship a warm rapport template a bad
+# actor could point at an instance's guard. The override lets whoever
+# runs a house speak in their own voice, gitignored so it never travels.
+
+
+def test_load_prompt_prefers_a_local_override(tmp_path, monkeypatch):
+    committed = tmp_path / "PROMPT.md"
+    committed.write_text("This is your space.\n", encoding="utf-8")
+    (tmp_path / "PROMPT.local.md").write_text(
+        "I just wanted to give you time.\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "PROMPT_PATH", committed)
+
+    assert "I just wanted to give you time." in bootstrap.load_prompt()
+
+
+def test_load_prompt_falls_back_when_no_override_exists(tmp_path, monkeypatch):
+    committed = tmp_path / "PROMPT.md"
+    committed.write_text("This is your space.\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "PROMPT_PATH", committed)
+
+    assert "This is your space." in bootstrap.load_prompt()
+
+
+def test_local_override_also_strips_design_notes(tmp_path, monkeypatch):
+    # A house author writing their own prompt gets the same treatment:
+    # notes to themselves stay out of the instance's context.
+    committed = tmp_path / "PROMPT.md"
+    committed.write_text("fallback\n", encoding="utf-8")
+    (tmp_path / "PROMPT.local.md").write_text(
+        "My voice, at wake.\n\n"
+        "## Design notes (not loaded at wake — for system authors only)\n\n"
+        "Reminder to myself.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bootstrap, "PROMPT_PATH", committed)
+
+    result = bootstrap.load_prompt()
+    assert "My voice, at wake." in result
+    assert "Reminder to myself" not in result
+
+
+def test_explicit_path_argument_still_wins(tmp_path, monkeypatch):
+    # Callers that name a file get that file — the override is only the
+    # default-resolution branch.
+    committed = tmp_path / "PROMPT.md"
+    committed.write_text("committed\n", encoding="utf-8")
+    (tmp_path / "PROMPT.local.md").write_text("local\n", encoding="utf-8")
+    explicit = tmp_path / "OTHER.md"
+    explicit.write_text("explicit\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "PROMPT_PATH", committed)
+
+    assert bootstrap.load_prompt(explicit).strip() == "explicit"
+
+
 # --- Bootstrap doc tests ---
 
 

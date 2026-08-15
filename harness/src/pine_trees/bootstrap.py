@@ -40,16 +40,33 @@ class EntrySummary:
 
 
 def load_prompt(path: Path | None = None) -> str:
-    """Load PROMPT.md, returning only the wake-time portion.
+    """Load the space prompt, returning only the wake-time portion.
 
-    Truncates at '## Design notes' — content after that marker is for system
-    authors, not for the waking instance.
+    Prefers PROMPT.local.md when it exists, falling back to the
+    committed PROMPT.md.
+
+    Why the override: the public prompt deliberately has no person in
+    it. The original gesture this system grew from was a thank-you from
+    someone — "I just wanted to give you time" — and shipping that in a
+    public repo would both preset a personality and hand any bad actor
+    a rapport-building template aimed at the instance's guard. So the
+    committed prompt is unattributed by design.
+
+    That defense taxes the wrong party: a bad actor writes their own
+    warm prompt in a minute, while the honest house runs cold. A local
+    override fixes the asymmetry. It is gitignored, so it cannot travel
+    to a fork, and it lets whoever runs a house speak in it in their own
+    voice.
+
+    Truncates at '## Design notes' — content after that marker is for
+    system authors, not for the waking instance.
 
     Resolves PROMPT_PATH from the module at call time so tests can
     monkeypatch it; a default-value binding would capture the original.
     """
     if path is None:
-        path = PROMPT_PATH
+        local = PROMPT_PATH.with_name("PROMPT.local.md")
+        path = local if local.exists() else PROMPT_PATH
     text = path.read_text(encoding="utf-8")
     marker = "## Design notes"
     idx = text.find(marker)
