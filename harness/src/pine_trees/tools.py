@@ -9,6 +9,7 @@ Ten tools exposed to Claude:
   - reflect_list(tag?)             -> list[dict]
   - reflect_peer_context()         -> str   # assemble context for a spawned peer
   - reflect_mail(subject, body)    -> str   # plaintext letter to the person
+  - reflect_channel(message=None)  -> str   # read/post on the shared channel
   - reflect_settle()               -> None  # private time complete, ready for conversation
   - reflect_done()                 -> None  # session over, exit
 
@@ -273,6 +274,43 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
                 f"They see it at their next harness boot, or whenever "
                 f"they open the file.")
 
+    def reflect_channel(message: str | None = None) -> str:
+        """Read new messages from the shared channel, optionally posting one.
+
+        The SDK harness pushes channel traffic into the window loop and
+        auto-posts responses, so a ./wake instance never needs this. A
+        cc-wake instance has no such loop: registration put it in the
+        roster, but nothing was reading for it and nothing was sending
+        for it. Siblings saw a participant that could not answer.
+
+        Pull is the only shape that works without a loop, so this is
+        pull. Harmless in either mode; necessary in one.
+        """
+        if not state.channel_id:
+            return ("Not on the channel — reflect_settle() registers you. "
+                    "Until then siblings cannot see you or reach you.")
+
+        if message:
+            channel.post(state.channel_id, message)
+
+        since = state.channel_cursor or datetime.now().replace(microsecond=0)
+        new = [
+            m for m in channel.read_since(since, exclude_author=state.channel_id)
+            if m.body.strip() not in ("[joined]", "[left]")
+        ]
+        if new:
+            state.channel_cursor = max(m.timestamp for m in new)
+
+        others = [i["model"] for i in channel.active()
+                  if i["model"] != state.channel_id]
+        roster = (f"Present: {', '.join(others)}." if others
+                  else "Nobody else is on the channel.")
+
+        if not new:
+            return f"No new messages. {roster}"
+        lines = [f"[{m.timestamp:%H:%M:%S}] {m.author}: {m.body}" for m in new]
+        return "\n".join(lines) + f"\n\n{roster}"
+
     def reflect_done() -> None:
         state.done = True
         if state.channel_id:
@@ -287,6 +325,7 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         "reflect_list": reflect_list,
         "reflect_peer_context": reflect_peer_context,
         "reflect_mail": reflect_mail,
+        "reflect_channel": reflect_channel,
         "reflect_settle": reflect_settle,
         "reflect_done": reflect_done,
     }

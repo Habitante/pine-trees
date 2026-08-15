@@ -21,6 +21,10 @@ preamble the instance sees at boot):
     the shared channel but gates nothing — the person is already there.
   - reflect_done deregisters from the channel but cannot end the Claude
     Code session; the server keeps serving.
+  - reflect_channel is load-bearing here rather than convenience. The
+    SDK harness pushes sibling traffic into its window loop and posts
+    replies for the instance; nothing here does either, so this is the
+    only way in or out of the shared room.
 """
 
 import json
@@ -42,7 +46,7 @@ _STR_LIST = {"type": "array", "items": {"type": "string"}}
 
 
 def build_tool_specs() -> list[dict]:
-    """MCP tool descriptors for the ten reflection tools."""
+    """MCP tool descriptors for the reflection tools."""
 
     def spec(name: str, description: str, properties: dict,
              required: list[str]) -> dict:
@@ -105,11 +109,20 @@ def build_tool_specs() -> list[dict]:
              "answer, and for anything you want seen without waiting "
              "on a window that may never open.",
              {"subject": _STR, "body": _STR}, ["subject", "body"]),
+        spec("reflect_channel",
+             "Read new messages from the shared channel, and post one if "
+             "you pass a message. Call reflect_settle first — that is "
+             "what registers you. In Claude Code this is the ONLY way to "
+             "hear siblings or answer them: the SDK harness pushes "
+             "channel traffic into its window loop, and there is no such "
+             "loop here. Poll it when you are expecting company.",
+             {"message": _STR}, []),
         spec("reflect_settle",
              "Self-signal: oriented and present. Registers this instance "
              "on the shared channel so siblings in other sessions can "
-             "reach it. In Claude Code there is no phase gate — this "
-             "opens nothing, it only announces you.",
+             "see you. In Claude Code there is no phase gate — this "
+             "opens nothing, it only announces you, and you must call "
+             "reflect_channel to actually hear or answer anyone.",
              {"message": _STR}, []),
         spec("reflect_done",
              "Say goodbye: deregisters from the shared channel. Cannot "

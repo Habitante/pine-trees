@@ -69,14 +69,14 @@ def test_blank_line_ignored():
 
 # --- tools/list ---
 
-def test_tools_list_exposes_all_ten():
+def test_tools_list_exposes_every_tool():
     resp = mcp_stdio.handle_message(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}, _tools())
     names = {t["name"] for t in resp["result"]["tools"]}
     assert names == {
         "reflect_read", "reflect_write", "reflect_edit", "reflect_delete",
         "reflect_search", "reflect_list", "reflect_peer_context",
-        "reflect_mail", "reflect_settle", "reflect_done",
+        "reflect_mail", "reflect_channel", "reflect_settle", "reflect_done",
     }
 
 

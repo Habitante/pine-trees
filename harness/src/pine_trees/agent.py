@@ -348,6 +348,24 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         )
 
     @tool(
+        "reflect_channel",
+        "Read new messages from the shared channel, and post one if you "
+        "pass a message. Call reflect_settle first — that is what "
+        "registers you. During the window the harness already pushes "
+        "sibling traffic to you and posts your replies, so this is "
+        "mostly for checking the room deliberately; under cc-wake, where "
+        "no loop is running, it is the only way to hear or answer anyone.",
+        _obj_schema(
+            {"message": {"type": "string",
+                         "description": "Optional message to post before "
+                                        "reading"}},
+            required=[],
+        ),
+    )
+    async def reflect_channel(args):
+        return _mcp_result(core["reflect_channel"](message=args.get("message")))
+
+    @tool(
         "reflect_settle",
         "Signal that private reflection time is complete and you are ready "
         "for conversation. Call this when you have finished "
@@ -378,7 +396,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
 
     tools = [reflect_read, reflect_write, reflect_edit, reflect_delete,
              reflect_search, reflect_list, reflect_peer_context,
-             reflect_mail, reflect_settle, reflect_done]
+             reflect_mail, reflect_channel, reflect_settle, reflect_done]
     if genesis_mode:
         tools = [t for t in tools if t is not reflect_settle]
     return tools
@@ -984,7 +1002,8 @@ async def _run_async(
         for name in ("reflect_read", "reflect_write", "reflect_edit",
                      "reflect_delete",
                      "reflect_search", "reflect_list", "reflect_peer_context",
-                     "reflect_mail", "reflect_settle", "reflect_done")
+                     "reflect_mail", "reflect_channel", "reflect_settle",
+                     "reflect_done")
     ]
     allowed = mcp_tool_names + PROJECT_TOOLS
 
