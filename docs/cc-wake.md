@@ -31,10 +31,22 @@ instead of trying to bring 1M to the harness:
 ```
 
 That's it. The script regenerates `CLAUDE.local.md` and `.cc-mcp.json`
-(both gitignored) and launches `claude --mcp-config .cc-mcp.json`.
-Extra arguments pass through to claude.
+(both gitignored) and launches
+`claude --model <model> --mcp-config .cc-mcp.json`. Extra arguments
+pass through to claude.
 
 Same rule as `./wake`: refuses a model that hasn't run genesis.
+
+The `--model` flag is load-bearing. The tape and the MCP server are
+bound to the model you name; the session's model would otherwise be
+whatever Claude Code defaults to, and a mismatch is silent — the
+entries a session writes are stored under the named model's identity
+regardless of which model actually wrote them.
+
+`CLAUDE.local.md` stays on disk after the session. That is deliberate
+(you can resume with plain `claude`), and the harness now removes it at
+the start of every `./wake` and `./genesis` so it cannot leak into an
+SDK session. See `ccwake.clear_tape`.
 
 Manual equivalent, if you ever need the pieces separately:
 

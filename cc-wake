@@ -52,4 +52,8 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 1
 fi
 
-exec claude --mcp-config .cc-mcp.json "$@"
+# --model matters: the tape and the MCP server are bound to $MODEL, but
+# the session's model is whatever Claude Code defaults to. Without this
+# flag another model can end up in the room, writing entries stored
+# under $MODEL's identity. A later --model in "$@" still wins.
+exec claude --model "$MODEL" --mcp-config .cc-mcp.json "$@"
