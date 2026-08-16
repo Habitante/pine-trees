@@ -15,6 +15,7 @@ Two layers:
 
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 
@@ -60,6 +61,11 @@ LOCK_RETRY_INTERVAL = 0.05
 
 # Channel polling interval during window phase (seconds)
 CHANNEL_POLL_INTERVAL = 2.5
+
+# How often a windowed session refreshes its roster entry. Well
+# under channel.STALE_AFTER, and far above CHANNEL_POLL_INTERVAL so
+# the poll loop is not taking the status lock every few seconds.
+CHANNEL_HEARTBEAT = timedelta(minutes=2)
 
 
 # --- Per-model config ---

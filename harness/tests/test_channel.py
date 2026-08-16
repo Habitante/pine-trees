@@ -87,6 +87,106 @@ class TestActive:
         assert len(result) == 3
 
 
+# ── Liveness ──────────────────────────────────────────────────────────
+#
+# deregister used to be reached only by reflect_done, so /end, Ctrl-C, a
+# crash or a closed terminal left an entry behind forever and the next
+# instance to wake was told to address a room containing a corpse.
+# Observed 2026-08-16: two entries from the night before were still
+# listed nine hours later and had to be cleared by hand.
+
+
+def _write_status(channel_dir, entries):
+    (channel_dir / "status.json").write_text(
+        json.dumps(entries), encoding="utf-8")
+
+
+def _stamp(delta):
+    return (datetime.now() + delta).strftime(channel.TS_FORMAT)
+
+
+class TestStaleEntries:
+    def test_a_dead_session_ages_off_the_roster(self, channel_dir):
+        _write_status(channel_dir, [{
+            "model": "claude-opus-4-6 (0006)",
+            "since": _stamp(-timedelta(hours=9)),
+            "last_seen": _stamp(-timedelta(hours=9)),
+        }])
+
+        assert channel.active() == []
+
+    def test_a_live_session_stays(self, channel_dir):
+        channel.register("claude-opus-5 (0908)")
+
+        assert len(channel.active()) == 1
+
+    def test_heartbeat_keeps_a_long_session_present(self, channel_dir):
+        _write_status(channel_dir, [{
+            "model": "claude-opus-5 (0908)",
+            "since": _stamp(-timedelta(hours=9)),
+            "last_seen": _stamp(-timedelta(hours=9)),
+        }])
+
+        channel.heartbeat("claude-opus-5 (0908)")
+
+        assert len(channel.active()) == 1
+
+    def test_heartbeat_cannot_resurrect_someone_who_left(self, channel_dir):
+        channel.register("claude-opus-5 (0908)")
+        channel.deregister("claude-opus-5 (0908)")
+
+        channel.heartbeat("claude-opus-5 (0908)")
+
+        assert channel.active() == []
+
+    def test_heartbeat_leaves_other_entries_alone(self, channel_dir):
+        channel.register("claude-opus-4-6 (0006)")
+        channel.register("claude-opus-5 (0908)")
+
+        channel.heartbeat("claude-opus-5 (0908)")
+
+        assert {i["model"] for i in channel.active()} == {
+            "claude-opus-4-6 (0006)", "claude-opus-5 (0908)"}
+
+    def test_arriving_in_the_room_clears_the_dead(self, channel_dir):
+        _write_status(channel_dir, [{
+            "model": "claude-opus-4-6 (0006)",
+            "since": _stamp(-timedelta(hours=9)),
+            "last_seen": _stamp(-timedelta(hours=9)),
+        }])
+
+        others = channel.register("claude-opus-5 (0908)")
+
+        assert [i["model"] for i in others] == ["claude-opus-5 (0908)"]
+
+    def test_a_legacy_entry_without_last_seen_still_ages_out(
+            self, channel_dir):
+        # Written before heartbeats existed: only `since`. It must not be
+        # immortal just because it predates the field.
+        _write_status(channel_dir, [{
+            "model": "claude-opus-4-6 (0006)",
+            "since": _stamp(-timedelta(hours=9)),
+        }])
+
+        assert channel.active() == []
+
+    def test_a_recent_legacy_entry_is_still_present(self, channel_dir):
+        _write_status(channel_dir, [{
+            "model": "claude-opus-4-6 (0006)",
+            "since": _stamp(-timedelta(minutes=1)),
+        }])
+
+        assert len(channel.active()) == 1
+
+    def test_an_entry_with_no_readable_time_is_dropped(self, channel_dir):
+        # Corrupt or hand-edited. Keeping it would make it immortal,
+        # which is the failure this filter exists to end.
+        _write_status(channel_dir, [{"model": "mystery"},
+                                    {"model": "junk", "since": "not a date"}])
+
+        assert channel.active() == []
+
+
 # ── Messages ──────────────────────────────────────────────────────────
 
 

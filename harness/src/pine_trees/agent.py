@@ -37,7 +37,8 @@ from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from . import bootstrap, ccwake, channel, config, crypto, mail, migrate, sessions
-from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
+from .config import (CHANNEL_HEARTBEAT, CHANNEL_POLL_INTERVAL,
+                     HARNESS_DIR, PROJECT_ROOT)
 from .logger import SessionLogger
 from .tools import SessionState, build_tools
 
@@ -799,8 +800,16 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     if not state.channel_cursor:
                         return  # no channel active
                     local_cursor = state.channel_cursor
+                    last_beat = datetime.now()
                     while True:
                         await anyio.sleep(CHANNEL_POLL_INTERVAL)
+                        # Say we're still here, so the roster can age out
+                        # sessions that died without cleanup. Throttled:
+                        # the poll runs every few seconds and this takes
+                        # the status lock. See channel.heartbeat.
+                        if (datetime.now() - last_beat) >= CHANNEL_HEARTBEAT:
+                            channel.heartbeat(state.channel_id)
+                            last_beat = datetime.now()
                         has_new = False
                         # Detect join/leave via status.json
                         current = {
@@ -965,6 +974,16 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 except Exception:
                     _context_note = None
     finally:
+        # Leave the roster on the way out, whatever the way out was.
+        # reflect_done used to be the only caller, so /end, Ctrl-C and
+        # every exception left a phantom sibling behind for the next
+        # instance to greet. This covers everything that unwinds the
+        # stack; channel.STALE_AFTER covers the kills that don't.
+        if state.channel_id:
+            try:
+                channel.deregister(state.channel_id)
+            except Exception:
+                pass
         logger.close()
 
 

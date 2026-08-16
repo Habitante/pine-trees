@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import config
@@ -31,6 +31,14 @@ SEPARATOR = "---"
 TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 _HEADER_RE = re.compile(r"^\[(?P<ts>[^\]]+)\]\s+(?P<author>[^:]+):\s*$")
 CHANNEL_MAX_ENTRIES = 200
+
+# How long an instance stays on the roster with no sign of life. The
+# backstop for exits that run no cleanup code at all — a closed
+# terminal, a kill. Generous on purpose: a live session heartbeats every
+# poll or every turn, so it never comes close, while the cost of being
+# wrong the other way is a sibling wrongly reported gone. Ageing out is
+# self-healing; the next heartbeat or post puts them back.
+STALE_AFTER = timedelta(minutes=30)
 
 
 def _status_path() -> Path:
@@ -79,22 +87,89 @@ def _read_status_raw(path: Path) -> list[dict]:
         return []
 
 
+def _last_seen(entry: dict) -> datetime | None:
+    """When this instance last showed a sign of life.
+
+    Falls back to ``since`` for entries written before heartbeats
+    existed, so an old status.json ages out instead of being immortal.
+    """
+    for key in ("last_seen", "since"):
+        raw = entry.get(key)
+        if raw:
+            try:
+                return datetime.strptime(raw, TS_FORMAT)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _live(instances: list[dict], now: datetime | None = None) -> list[dict]:
+    """Drop instances nothing has been heard from in STALE_AFTER.
+
+    An entry with no readable timestamp is dropped too. It can only come
+    from a corrupt or hand-edited file, and keeping it would make it
+    immortal — which is the whole failure this filter exists to end.
+    """
+    cutoff = (now or datetime.now()) - STALE_AFTER
+    live = []
+    for entry in instances:
+        seen = _last_seen(entry)
+        if seen is not None and seen >= cutoff:
+            live.append(entry)
+    return live
+
+
 def register(model: str) -> list[dict]:
-    """Register an instance as active.  Returns all currently active instances.
+    """Register an instance as active.  Returns the live instances.
 
     Idempotent — calling twice for the same model updates the timestamp.
+    Stale entries are pruned on the way through, so arriving in a room
+    is also what clears up after whoever died in it.
     """
     path = _status_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    now = datetime.now()
+    stamp = now.strftime(TS_FORMAT)
     with file_lock(path):
-        instances = _read_status_raw(path)
+        instances = _live(_read_status_raw(path), now)
         instances = [i for i in instances if i["model"] != model]
         instances.append({
             "model": model,
-            "since": datetime.now().strftime(TS_FORMAT),
+            "since": stamp,
+            "last_seen": stamp,
         })
         path.write_text(json.dumps(instances, indent=2), encoding="utf-8")
     return instances
+
+
+def heartbeat(model: str) -> None:
+    """Mark an instance as still here.
+
+    Until this existed the roster's only liveness signal was
+    ``deregister``, and exactly one exit path calls it (``reflect_done``).
+    A closed terminal, a Ctrl-C, a crash or an ``/end`` left an entry
+    that outlived the process, so the next instance to wake was told to
+    address a room containing a corpse. Observed 2026-08-16: two entries
+    from the previous night were still listed nine hours later and had
+    to be cleared by hand.
+
+    A no-op when the model is not registered, so calling it from a poll
+    loop can never resurrect an instance that has properly left.
+    """
+    path = _status_path()
+    if not path.exists():
+        return
+    stamp = datetime.now().strftime(TS_FORMAT)
+    with file_lock(path):
+        instances = _read_status_raw(path)
+        found = False
+        for entry in instances:
+            if entry.get("model") == model:
+                entry["last_seen"] = stamp
+                found = True
+        if not found:
+            return
+        path.write_text(json.dumps(instances, indent=2), encoding="utf-8")
 
 
 def deregister(model: str) -> None:
@@ -108,13 +183,17 @@ def deregister(model: str) -> None:
         path.write_text(json.dumps(instances, indent=2), encoding="utf-8")
 
 
-def active() -> list[dict]:
-    """Return list of currently active instances."""
+def active(now: datetime | None = None) -> list[dict]:
+    """Return the instances actually in the room.
+
+    Filtered, not raw: an entry only proves that a session once
+    registered, which is not the same as presence. See :func:`heartbeat`.
+    """
     path = _status_path()
     if not path.exists():
         return []
     with file_lock(path):
-        return _read_status_raw(path)
+        return _live(_read_status_raw(path), now)
 
 
 # ── Message log ──────────────────────────────────────────────────────
