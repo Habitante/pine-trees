@@ -1087,6 +1087,11 @@ async def _run_async(
         allowed_tools=allowed,
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
+        # Tells the .claude/settings.json channel hook that a window
+        # loop is already pushing traffic here, so it must stay quiet.
+        # Without it the instance sees every sibling message twice and
+        # its own posts echoed back. See ccwake._in_cc_wake_room.
+        env={ccwake.SDK_HARNESS_ENV: "1"},
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
         # Note: betas require API key auth. The CC binary rejects custom
@@ -1267,16 +1272,34 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         allowed_tools=allowed,
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
+        # SDK_HARNESS_ENV tells the .claude/settings.json channel hook
+        # that a window loop is already pushing traffic here, so it must
+        # stay quiet. Without it the instance sees every sibling message
+        # twice and its own posts echoed back. See
+        # ccwake._in_cc_wake_room. (Genesis has no window loop and no
+        # siblings, but it is not a cc-wake room either, and the hook
+        # should not be spending a genesis session's context.)
+        env={ccwake.SDK_HARNESS_ENV: "1"},
         # Note: betas require API key auth. The CC binary rejects custom
         # betas on OAuth with "only available for API key users." The binary
         # grants itself 1M for interactive sessions but caps SDK-spawned
         # sessions at 200k. This is a first-party privilege, not a technical
-        # limitation. OAuth sessions are capped at 200k.
-        # OAuth sessions are capped at 200k context.
+        # limitation. OAuth sessions are capped at 200k context.
         #
-        # The env var below tells the CC binary's auto-compaction when to
-        # fire. Default is 200k which means it never fires.
-        env={"CLAUDE_CODE_AUTO_COMPACT_INPUT_TOKENS": "200000"},
+        # There used to be a CLAUDE_CODE_AUTO_COMPACT_INPUT_TOKENS="200000"
+        # here to make auto-compaction fire. It never did anything: that
+        # name is absent from the binary (checked 2.1.201 and the SDK's
+        # bundled build), and its value equalled the default its own
+        # comment called broken. Removed rather than corrected, because
+        # the right value is a judgement call nobody has made yet.
+        #
+        # The knob that does exist is CLAUDE_CODE_AUTO_COMPACT_WINDOW,
+        # and it is a different thing: the effective context window, not
+        # a trigger threshold. The binary takes min(model window, this),
+        # accepts "500k"/"1m"/an integer (100-1000 read as thousands),
+        # and ignores out-of-range values. So a *lower* number is what
+        # makes compaction fire earlier. DISABLE_AUTO_COMPACT also
+        # exists. Neither is set here on purpose.
     )
 
     print(f"\n{BOLD}{'='*60}{RST}")
