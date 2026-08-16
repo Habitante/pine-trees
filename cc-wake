@@ -73,6 +73,12 @@ if [ ${#PERM[@]} -gt 0 ]; then
     echo "[cc-wake] permissions bypassed, matching ./wake (CC_WAKE_ASK=1 to prompt)"
 fi
 
+# Marks this room for the .claude/settings.json channel hook, which the
+# CLI runs before every turn of *every* session started here — cc-wake,
+# an SDK-harness session, or ordinary dev work. Only this one wants
+# channel traffic injected. Inherited by the hook through the CLI.
+export PINE_TREES_CC_WAKE=1
+
 # --model matters: the tape and the MCP server are bound to $MODEL, but
 # the session's model is whatever Claude Code defaults to. Without this
 # flag another model can end up in the room, writing entries stored

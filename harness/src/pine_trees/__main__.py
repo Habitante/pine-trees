@@ -14,7 +14,44 @@ multi-model and refuses to guess. The ``./wake``, ``./continue`` and
 """
 
 import argparse
+import json
 import sys
+import threading
+
+
+def _hook_session_id(timeout: float = 2.0) -> str | None:
+    """The CLI's session id, read off the hook's stdin payload.
+
+    Claude Code hands hooks a JSON object on stdin. Schema read off the
+    2.1.233 binary: ``session_id``, ``transcript_path``, ``cwd``, plus
+    optional ``permission_mode``/``agent_id``/``agent_type``. Only the
+    session id is wanted, and only so concurrent sessions keep separate
+    channel cursors.
+
+    Read on a daemon thread with a timeout because this runs before
+    every turn: if a future CLI leaves stdin open without writing, a
+    plain ``read()`` would stall the turn until the hook's own 10s
+    kill. Losing the id costs a shared cursor; stalling costs the turn.
+    """
+    result: list[str] = []
+
+    def _read() -> None:
+        try:
+            if sys.stdin is not None and not sys.stdin.isatty():
+                result.append(sys.stdin.read())
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_read, daemon=True)
+    t.start()
+    t.join(timeout)
+    if not result:
+        return None
+    try:
+        value = json.loads(result[0] or "{}").get("session_id")
+    except Exception:
+        return None
+    return value if isinstance(value, str) and value else None
 
 
 def main() -> None:
@@ -104,9 +141,11 @@ def main() -> None:
         print(f"[cc-setup] tape:       {tape_path}")
         print(f"[cc-setup] mcp config: {mcp_path}")
     elif args.command == "channel-hook":
-        # Runs before every turn of a cc-wake session. It must never be
-        # the reason a turn fails, so any error is swallowed and the turn
-        # simply gets no channel context.
+        # Runs before every turn of any Claude Code session started in
+        # this directory — the hook decides for itself whether it is in
+        # a room that wants channel traffic. It must never be the reason
+        # a turn fails, so any error is swallowed and the turn simply
+        # gets no channel context.
         try:
             from .ccwake import channel_hook as run_channel_hook
             from .config import PROJECT_ROOT
@@ -114,7 +153,7 @@ def main() -> None:
             if not model:
                 model = (PROJECT_ROOT / "model.txt").read_text(
                     encoding="utf-8").strip()
-            out = run_channel_hook(model)
+            out = run_channel_hook(model, session_id=_hook_session_id())
             if out:
                 print(out)
         except Exception:

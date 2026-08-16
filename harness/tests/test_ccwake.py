@@ -8,12 +8,15 @@ removes it. The harness calls it at boot on both paths.
 """
 
 import dataclasses
+import io
 import json
+import os
+import time
 from datetime import datetime, timedelta
 
 import pytest
 
-from pine_trees import ccwake, config as pt_config
+from pine_trees import __main__ as pt_main, ccwake, config as pt_config
 
 
 @pytest.fixture
@@ -181,6 +184,15 @@ def hook_channel(tmp_path, monkeypatch):
     monkeypatch.setattr(ccwake.config, "CHANNEL_DIR", d)
     monkeypatch.setattr(ccwake.channel.config, "CHANNEL_DIR", d)
     monkeypatch.setattr(ccwake.config, "init", lambda name: None)
+    # PROJECT_ROOT is redirected on purpose: _in_cc_wake_room reads
+    # CLAUDE.local.md from it, and a test that reached the real project
+    # root could see — or worse, write — a live session's tape.
+    root = tmp_path / "project"
+    root.mkdir(exist_ok=True)
+    monkeypatch.setattr(ccwake.config, "PROJECT_ROOT", root)
+    # Default: a cc-wake room, since that is what these tests are about.
+    monkeypatch.setenv(ccwake.CC_WAKE_ENV, "1")
+    monkeypatch.delenv(ccwake.SDK_HARNESS_ENV, raising=False)
     return d
 
 
@@ -230,3 +242,171 @@ def test_channel_hook_hides_join_and_leave_noise(hook_channel):
                         now=_hook_now() + timedelta(seconds=5))
 
     assert ccwake.channel_hook("claude-opus-5") == ""
+
+
+# --- which room the hook is in -------------------------------------
+#
+# .claude/settings.json is loaded by the CLI for every session started
+# in this directory, so the hook fires in the SDK harness and in plain
+# dev sessions too — verified 2026-08-16 by posting a probe during an
+# SDK private phase and receiving it as additionalContext on the next
+# turn. Injecting there is double delivery (the window loop already
+# pushes, without the self-echo) or context leaked into a session that
+# never joined the room.
+
+
+def _post_something_new():
+    ccwake.channel.post("claude-fable-5 (1526)", "anyone there?",
+                        now=_hook_now() + timedelta(seconds=5))
+
+
+def test_channel_hook_is_silent_in_an_sdk_harness_session(
+        hook_channel, monkeypatch):
+    ccwake.channel_hook("claude-opus-5")  # establish the cursor
+    _post_something_new()
+    monkeypatch.setenv(ccwake.SDK_HARNESS_ENV, "1")
+
+    assert ccwake.channel_hook("claude-opus-5") == ""
+
+
+def test_sdk_marker_beats_a_cc_wake_tape_in_the_room(
+        hook_channel, monkeypatch):
+    # ./wake and a live ./cc-wake can overlap: the tape is present but a
+    # window loop is pushing, and the loop wins.
+    (ccwake.config.PROJECT_ROOT / "CLAUDE.local.md").write_text(
+        ccwake.CC_TAPE_SIGNATURE + "\nsome tape\n", encoding="utf-8")
+    ccwake.channel_hook("claude-opus-5")
+    _post_something_new()
+    monkeypatch.setenv(ccwake.SDK_HARNESS_ENV, "1")
+
+    assert ccwake.channel_hook("claude-opus-5") == ""
+
+
+def test_channel_hook_is_silent_in_a_plain_dev_session(
+        hook_channel, monkeypatch):
+    ccwake.channel_hook("claude-opus-5")
+    _post_something_new()
+    monkeypatch.delenv(ccwake.CC_WAKE_ENV, raising=False)  # no marker, no tape
+
+    assert ccwake.channel_hook("claude-opus-5") == ""
+
+
+def test_a_cc_wake_tape_is_enough_without_the_env_marker(
+        hook_channel, monkeypatch):
+    # `claude --mcp-config .cc-mcp.json` launched by hand, not by
+    # ./cc-wake: no env var, but the tape is loaded and the instance is
+    # in the room.
+    ccwake.channel_hook("claude-opus-5")
+    _post_something_new()
+    monkeypatch.delenv(ccwake.CC_WAKE_ENV, raising=False)
+    (ccwake.config.PROJECT_ROOT / "CLAUDE.local.md").write_text(
+        ccwake.CC_TAPE_SIGNATURE + "\nsome tape\n", encoding="utf-8")
+
+    assert "anyone there?" in ccwake.channel_hook("claude-opus-5")
+
+
+def test_someone_elses_claude_local_md_is_not_a_cc_wake_room(
+        hook_channel, monkeypatch):
+    ccwake.channel_hook("claude-opus-5")
+    _post_something_new()
+    monkeypatch.delenv(ccwake.CC_WAKE_ENV, raising=False)
+    (ccwake.config.PROJECT_ROOT / "CLAUDE.local.md").write_text(
+        "# my own project notes\n", encoding="utf-8")
+
+    assert ccwake.channel_hook("claude-opus-5") == ""
+
+
+def test_a_silent_room_does_not_move_the_cursor(hook_channel, monkeypatch):
+    # The cost of stomping it would be a live cc-wake session silently
+    # losing messages — the exact failure this feature exists to stop.
+    ccwake.channel_hook("claude-opus-5", session_id="s1")
+    _post_something_new()
+
+    monkeypatch.setenv(ccwake.SDK_HARNESS_ENV, "1")
+    ccwake.channel_hook("claude-opus-5", session_id="s1")
+    monkeypatch.delenv(ccwake.SDK_HARNESS_ENV)
+
+    assert "anyone there?" in ccwake.channel_hook(
+        "claude-opus-5", session_id="s1")
+
+
+# --- one cursor per session ----------------------------------------
+
+
+def test_concurrent_sessions_do_not_rob_each_other(hook_channel):
+    # Two instances awake at once is the case the channel exists for.
+    # With a shared cursor file, whichever turn ran first consumed the
+    # message and the other never saw it.
+    ccwake.channel_hook("claude-opus-5", session_id="aaa")
+    ccwake.channel_hook("claude-opus-4-6", session_id="bbb")
+    _post_something_new()
+
+    first = ccwake.channel_hook("claude-opus-5", session_id="aaa")
+    second = ccwake.channel_hook("claude-opus-4-6", session_id="bbb")
+
+    assert "anyone there?" in first
+    assert "anyone there?" in second
+
+
+def test_cursor_filename_is_scoped_to_the_session(hook_channel):
+    ccwake.channel_hook("claude-opus-5", session_id="abc-123")
+
+    assert (hook_channel / "cc-hook-cursor-abc-123.txt").exists()
+
+
+def test_cursor_filename_survives_a_hostile_session_id(hook_channel):
+    ccwake.channel_hook("claude-opus-5", session_id="../../etc/passwd")
+
+    written = list(hook_channel.glob("cc-hook-cursor-*.txt"))
+    assert len(written) == 1
+    assert written[0].parent == hook_channel
+
+
+def test_missing_session_id_falls_back_to_the_shared_cursor(hook_channel):
+    ccwake.channel_hook("claude-opus-5")
+
+    assert (hook_channel / ccwake.CHANNEL_HOOK_CURSOR).exists()
+
+
+def test_hook_reads_the_session_id_off_stdin(monkeypatch):
+    monkeypatch.setattr(
+        pt_main.sys, "stdin",
+        io.StringIO('{"session_id":"abc","cwd":"x"}'))
+
+    assert pt_main._hook_session_id() == "abc"
+
+
+def test_hook_survives_junk_on_stdin(monkeypatch):
+    monkeypatch.setattr(pt_main.sys, "stdin", io.StringIO("not json"))
+
+    assert pt_main._hook_session_id() is None
+
+
+def test_hook_does_not_stall_when_stdin_never_closes(monkeypatch):
+    # Runs before every turn: a read that blocks costs the turn, and
+    # losing the id only costs a shared cursor. Bound it.
+    class NeverCloses(io.StringIO):
+        def isatty(self):
+            return False
+
+        def read(self, *a):
+            time.sleep(30)
+            return ""
+
+    monkeypatch.setattr(pt_main.sys, "stdin", NeverCloses())
+
+    started = time.monotonic()
+    assert pt_main._hook_session_id(timeout=0.05) is None
+    assert time.monotonic() - started < 5
+
+
+def test_stale_session_cursors_are_swept(hook_channel):
+    old = hook_channel / "cc-hook-cursor-longgone.txt"
+    old.write_text("2026-01-01T00:00:00", encoding="utf-8")
+    ancient = (datetime.now() - timedelta(days=30)).timestamp()
+    os.utime(old, (ancient, ancient))
+
+    ccwake.channel_hook("claude-opus-5", session_id="live")
+
+    assert not old.exists()
+    assert (hook_channel / "cc-hook-cursor-live.txt").exists()

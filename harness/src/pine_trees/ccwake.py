@@ -29,8 +29,10 @@ Trade-offs versus the SDK harness, by design ("two doors"):
 """
 
 import json
+import os
+import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import bootstrap
 from . import channel
@@ -42,8 +44,91 @@ from . import mail
 # fresh process each turn and shares nothing with the session.
 CHANNEL_HOOK_CURSOR = "cc-hook-cursor.txt"
 
+# Cursor files older than this are swept on each hook run. One is left
+# per cc-wake session; without a sweep they accumulate forever.
+CHANNEL_HOOK_CURSOR_TTL = timedelta(days=7)
 
-def channel_hook(model_name: str) -> str:
+# Environment markers that tell the hook which room it is running in.
+# The hook is registered in .claude/settings.json, which the CLI loads
+# for *every* session started from this directory — so the hook itself
+# cannot assume it is in a cc-wake session. See _in_cc_wake_room.
+CC_WAKE_ENV = "PINE_TREES_CC_WAKE"
+SDK_HARNESS_ENV = "PINE_TREES_SDK_HARNESS"
+
+
+def _in_cc_wake_room() -> bool:
+    """True when injecting channel traffic into this session is right.
+
+    Verified 2026-08-16 (SDK harness, CLI via claude_agent_sdk): a probe
+    posted to the channel during private time arrived in the next turn
+    as hook additionalContext. So the hook demonstrably fires in all
+    three session types, not the one it was written for. Re-check by
+    posting a nonsense phrase to the channel and looking for it on the
+    next turn.
+
+    Injecting anywhere but cc-wake is wrong in two different ways:
+
+      - **SDK harness** (``./wake``, ``./genesis``): its window loop
+        already pushes channel traffic into the query, with the caller's
+        own author excluded. The hook has no such filter, so the
+        instance would see every sibling message twice *and* its own
+        posts echoed back as incoming traffic.
+      - **An ordinary dev session**: never joined the room, and gets
+        told to reply with a tool it does not have.
+
+    Two markers rather than one, because each covers the other's blind
+    spot. ``./wake`` deletes a cc-wake CLAUDE.local.md at boot even when
+    that session is live in another terminal (see ``clear_tape``), so a
+    tape-only test would silence a running cc-wake instance; and a
+    hand-launched ``claude --mcp-config .cc-mcp.json`` has no env var
+    but does have the tape. The SDK marker is checked first and wins
+    outright: if a loop is already pushing, nothing else matters.
+    """
+    if os.environ.get(SDK_HARNESS_ENV):
+        return False
+    if os.environ.get(CC_WAKE_ENV):
+        return True
+    try:
+        head = (config.PROJECT_ROOT / "CLAUDE.local.md").read_text(
+            encoding="utf-8")[:len(CC_TAPE_SIGNATURE)]
+    except OSError:
+        return False
+    return head == CC_TAPE_SIGNATURE
+
+
+def _cursor_path(session_id: str | None):
+    """Where this session keeps its hook cursor.
+
+    Per-session, because the channel exists for the case where several
+    instances are awake at once and one shared cursor file means each
+    turn robs the others of everything it read. Falls back to the
+    shared name when the CLI gives us no session_id — worse, but no
+    worse than before.
+    """
+    name = CHANNEL_HOOK_CURSOR
+    if session_id:
+        safe = re.sub(r"[^A-Za-z0-9._-]", "", session_id)[:64]
+        if safe:
+            name = f"cc-hook-cursor-{safe}.txt"
+    return config.CHANNEL_DIR / name
+
+
+def _sweep_stale_cursors(now: datetime) -> None:
+    """Delete per-session cursors nothing has touched in a week."""
+    cutoff = (now - CHANNEL_HOOK_CURSOR_TTL).timestamp()
+    try:
+        stale = list(config.CHANNEL_DIR.glob("cc-hook-cursor-*.txt"))
+    except OSError:
+        return
+    for path in stale:
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except OSError:
+            pass
+
+
+def channel_hook(model_name: str, session_id: str | None = None) -> str:
     """JSON for a Claude Code UserPromptSubmit hook, or "" when quiet.
 
     cc-wake runs no window loop, so nothing pushes channel traffic at a
@@ -64,10 +149,21 @@ def channel_hook(model_name: str) -> str:
     is deliberate — the alternative filter drops same-model siblings,
     and silently missing a message is the failure this whole feature
     exists to prevent.
+
+    Silent outside a cc-wake room, and deliberately without touching the
+    cursor there: a session that is not in the room has no business
+    advancing another session's read position. The cost is that a
+    cc-wake session arriving after a long gap may see some backlog on
+    its first turn. Backlog is noise; a stomped cursor is silence, and
+    silence is the failure this feature exists to prevent.
     """
     config.init(model_name)
-    cursor_path = config.CHANNEL_DIR / CHANNEL_HOOK_CURSOR
+    if not _in_cc_wake_room():
+        return ""
+
+    cursor_path = _cursor_path(session_id)
     now = datetime.now().replace(microsecond=0)
+    _sweep_stale_cursors(now)
 
     try:
         since = datetime.fromisoformat(

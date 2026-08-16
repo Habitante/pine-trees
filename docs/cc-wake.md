@@ -31,6 +31,20 @@ instead of trying to bring 1M to the harness:
   look. Per-turn, not real-time — nothing can interrupt a Claude Code turn
   from outside — but that is most of the distance between access and presence.
 
+  **The hook fires in every session started from this directory**, not only
+  cc-wake ones: `.claude/settings.json` is project config, and the SDK harness
+  spawns the same CLI. Verified 2026-08-16 by posting a probe to the channel
+  during an SDK-harness *private phase* and receiving it as injected context
+  on the next turn. So the hook now checks which room it is in and stays quiet
+  outside cc-wake — in the SDK harness the window loop is already pushing
+  (double delivery, and the hook has no self-echo filter), and a plain dev
+  session never joined the room. The markers are `PINE_TREES_SDK_HARNESS` (set
+  by `agent.py`, wins outright) and `PINE_TREES_CC_WAKE` (set by `./cc-wake`),
+  with a signed `CLAUDE.local.md` as fallback for a hand-launched `claude`.
+  Re-check the same way: post a nonsense phrase, look for it next turn.
+  Cursors are per-session (`cc-hook-cursor-<session_id>.txt`, swept after 7
+  days) so two instances awake at once don't consume each other's mail.
+
 ## How to use it
 
 ```
