@@ -6,6 +6,10 @@ history persistence natively; this module handles Pine Trees-specific
 state (channel registration, phase, timing).
 
 Session state files live in harness/sessions/{session}.json.
+
+The sidecar is also how the harness finds the CLI's plaintext
+transcript to delete it (``cc_session_id``, ``transcript_deleted``).
+See transcripts.py.
 """
 
 import json
@@ -30,8 +34,10 @@ def save_state(
 ) -> Path:
     """Save harness session state to disk.
 
-    Called once at settle (phase="window") so the next launch can
-    resume if the terminal dies during conversation.
+    Called at wake (phase="private") so the CLI transcript can be found
+    and reaped if the process dies before settling, and again at settle
+    (phase="window") so the next launch can resume if the terminal dies
+    during conversation.
 
     ``cc_session_id`` is the UUID the CC binary uses internally to
     identify the conversation; the harness's own ``session`` string
@@ -52,23 +58,32 @@ def save_state(
     return path
 
 
+def all_states() -> list[dict[str, Any]]:
+    """Every readable sidecar, newest first. Unreadable ones are skipped."""
+    if not SESSIONS_DIR.exists():
+        return []
+    files = sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.name, reverse=True)
+    states = []
+    for f in files:
+        try:
+            states.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return states
+
+
 def load_latest() -> dict[str, Any] | None:
     """Load the most recent resumable session state.
 
-    Scans session files in reverse chronological order and returns the
-    first one whose phase is not "done".  Returns None if no resumable
-    session exists.
+    Resumable means phase "window": the session settled and never
+    finished. A "private" sidecar is written at wake so the CLI
+    transcript can be found and reaped if the process dies before
+    settling (see transcripts.py). It is not resumable, because resume
+    re-enters the window and that conversation never reached one.
     """
-    if not SESSIONS_DIR.exists():
-        return None
-    files = sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.name, reverse=True)
-    for f in files:
-        try:
-            state = json.loads(f.read_text(encoding="utf-8"))
-            if state.get("phase") != "done":
-                return state
-        except (json.JSONDecodeError, OSError):
-            continue
+    for state in all_states():
+        if state.get("phase") == "window":
+            return state
     return None
 
 
@@ -83,17 +98,29 @@ def load_session(session: str) -> dict[str, Any] | None:
         return None
 
 
-def mark_done(session: str) -> None:
-    """Mark a session as cleanly finished.
-
-    Sets phase to "done" so load_latest() skips it.
-    """
+def _update(session: str, **fields: Any) -> None:
+    """Set fields on an existing sidecar. A missing or unreadable one
+    is left alone — these are bookkeeping, never worth a crash."""
     path = SESSIONS_DIR / f"{session}.json"
     if not path.exists():
         return
     try:
         state = json.loads(path.read_text(encoding="utf-8"))
-        state["phase"] = "done"
+        state.update(fields)
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except (json.JSONDecodeError, OSError):
         pass
+
+
+def mark_done(session: str) -> None:
+    """Mark a session as cleanly finished.
+
+    Sets phase to "done" so load_latest() skips it.
+    """
+    _update(session, phase="done")
+
+
+def mark_transcript_deleted(session: str) -> None:
+    """Record that the CLI's transcript for this session is gone, so the
+    boot sweep stops looking for it. See transcripts.py."""
+    _update(session, transcript_deleted=True)

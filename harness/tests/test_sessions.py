@@ -109,6 +109,53 @@ class TestLoadLatest:
         assert latest is not None
         assert latest["session"] == "2026-04-20-0800"
 
+    def test_skips_private_phase(self, tmp_path, monkeypatch):
+        # Wake writes a "private" sidecar before settling so a killed
+        # process's transcript can be reaped. It must not become the
+        # thing ./continue resumes: that conversation has no window.
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
+        sessions.save_state(session="2026-04-20-0800", instance="i", phase="window")
+        sessions.save_state(session="2026-04-21-0611", instance="i", phase="private")
+        latest = sessions.load_latest()
+        assert latest is not None
+        assert latest["session"] == "2026-04-20-0800"
+
+    def test_returns_none_when_only_private(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
+        sessions.save_state(session="2026-04-21-0611", instance="i", phase="private")
+        assert sessions.load_latest() is None
+
+
+class TestAllStates:
+
+    def test_newest_first_and_skips_corrupt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
+        sessions.save_state(session="2026-04-20-0800", instance="i", phase="done")
+        sessions.save_state(session="2026-04-21-0611", instance="i", phase="window")
+        (tmp_path / "2026-04-22-0900.json").write_text("not json", encoding="utf-8")
+        assert [s["session"] for s in sessions.all_states()] == [
+            "2026-04-21-0611", "2026-04-20-0800"]
+
+    def test_missing_dir_is_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "nope")
+        assert sessions.all_states() == []
+
+
+class TestMarkTranscriptDeleted:
+
+    def test_sets_flag_and_keeps_phase(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
+        sessions.save_state(session="2026-04-21-0611", instance="i", phase="window")
+        sessions.mark_transcript_deleted("2026-04-21-0611")
+        loaded = sessions.load_session("2026-04-21-0611")
+        assert loaded["transcript_deleted"] is True
+        assert loaded["phase"] == "window"
+
+    def test_noop_on_missing_session(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
+        sessions.mark_transcript_deleted("nonexistent")
+        assert not (tmp_path / "nonexistent.json").exists()
+
 
 class TestMarkDone:
     """mark_done sets phase to 'done'."""

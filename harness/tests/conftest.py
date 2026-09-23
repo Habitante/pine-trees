@@ -13,7 +13,7 @@ Tests that exercise config lifecycle itself opt out via the
 
 import pytest
 
-from pine_trees import config as pt_config, crypto
+from pine_trees import config as pt_config, crypto, sessions
 
 
 def pytest_configure(config):
@@ -35,6 +35,14 @@ def _test_config(request, tmp_path, monkeypatch):
     Teardown calls ``config.reset()`` explicitly so state cannot leak
     between tests even if an assertion failure aborts the fixture early.
     """
+    # Before the opt-out, because these guard real data outside the repo:
+    # _run_async sweeps the CLI's transcripts at boot, ahead of its
+    # guards, and a sweep that saw the real sidecars would mark them
+    # reaped (or, with the real config dir, actually delete the
+    # transcripts). See transcripts.py.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
+    monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "sessions")
+
     if request.node.get_closest_marker("no_autoconfig"):
         yield None
         return

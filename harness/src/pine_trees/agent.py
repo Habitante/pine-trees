@@ -36,7 +36,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import bootstrap, ccwake, channel, config, crypto, mail, migrate, sessions
+from . import (bootstrap, ccwake, channel, config, crypto, mail, migrate,
+               sessions, transcripts)
 from .config import (CHANNEL_HEARTBEAT, CHANNEL_POLL_INTERVAL,
                      HARNESS_DIR, PROJECT_ROOT)
 from .logger import SessionLogger
@@ -1044,6 +1045,14 @@ async def _run_async(
     if notice:
         print(f"{DIM}{notice}{RST}")
 
+    # The CLI's plaintext transcripts of sessions nothing can resume any
+    # more. Most are deleted as their session exits; this catches the
+    # processes that were killed first. See transcripts.py.
+    swept = transcripts.sweep()
+    if swept:
+        print(f"{DIM}[wake] removed {swept} CLI transcript file(s) "
+              f"of finished sessions{RST}")
+
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
     # on a mind with nothing to remember. Also covers the case where the
@@ -1066,6 +1075,15 @@ async def _run_async(
         if not prior:
             print(f"{RED}[error] No resumable session found{RST}")
             return
+
+        # --resume <id> loads any sidecar; only a settled, unfinished
+        # session still has a transcript and a window to return to.
+        if prior.get("phase") != "window":
+            why = ("finished cleanly, and the CLI's transcript went with it"
+                   if prior.get("phase") == "done" else
+                   "never reached the window, so there is nothing to resume")
+            print(f"{RED}[error] Session {prior.get('session')} {why}.{RST}")
+            sys.exit(1)
 
         # Guard: session belongs to a specific model. If the user passed
         # the wrong --model, point them at the right one rather than
@@ -1133,6 +1151,17 @@ async def _run_async(
             sys.exit(1)
     else:
         cc_session_id = str(uuid.uuid4())
+        # Recorded now rather than at settle: a process killed during
+        # private time would otherwise leave a transcript full of
+        # reflect_write inputs that no sweep could find. load_latest()
+        # ignores this phase, since there is no window to resume into.
+        sessions.save_state(
+            session=state.session,
+            instance=state.instance,
+            phase="private",
+            started_at=state.started_at,
+            cc_session_id=cc_session_id,
+        )
 
     options = ClaudeAgentOptions(
         model=cfg.model_name,
@@ -1165,6 +1194,7 @@ async def _run_async(
               f"instance={state.instance} session={state.session}{RST}")
         print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
 
+    finished = False
     try:
         async with ClaudeSDKClient(options=options) as client:
             # Tape is loaded by the CLI at connect — delete the plaintext file
@@ -1200,6 +1230,7 @@ async def _run_async(
                 if state.done:
                     print(f"\n{DIM}[done] reflect_done during private time after {turns} turn(s){RST}")
                     sessions.mark_done(state.session)
+                    finished = True
                     return
                 if not state.ready_for_window:
                     print(f"\n{YELLOW}[done] hit MAX_PRIVATE_TURNS={MAX_PRIVATE_TURNS} without settle{RST}")
@@ -1223,12 +1254,24 @@ async def _run_async(
 
             # Clean exit — mark session done so it's skipped by load_latest()
             sessions.mark_done(state.session)
+            finished = True
             print(f"\n{DIM}[done] session complete{RST}")
     except ClaudeSDKError as e:
         # Clean up the temp tape file if we failed before it was deleted.
         tape_path.unlink(missing_ok=True)
         _print_claude_api_unreachable(e)
         sys.exit(1)
+    finally:
+        # The CLI's transcript is kept only while ./continue can still
+        # use it: settled, window not finished (a crash, a kill, Ctrl-C
+        # mid-conversation). Every other way out deletes it — reflect_done,
+        # the turn cap, a clean close, and a private-phase error or
+        # Ctrl-C, which never reached a window to resume. Runs after the
+        # client has closed, so the CLI is no longer writing to it.
+        if finished or not state.ready_for_window:
+            if transcripts.reap(state.session, cc_session_id):
+                print(f"{DIM}[done] removed the CLI's transcript "
+                      f"of this session{RST}")
 
 
 def _parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -1319,6 +1362,11 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     tape_path = HARNESS_DIR / ".tape.md"
     tape_path.write_text(tape, encoding="utf-8")
 
+    # Genesis never resumes, so the CLI's transcript has nothing to be
+    # for: NO_PERSISTENCE stops it being written. The id is set only so
+    # the leftovers the flag misses can be found afterwards.
+    cc_session_id = str(uuid.uuid4())
+
     options = ClaudeAgentOptions(
         model=cfg.model_name,
         cwd=str(PROJECT_ROOT),
@@ -1327,6 +1375,8 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         allowed_tools=allowed,
         agents={"peer": _peer_agent_definition(genesis_mcp_tools)},
         permission_mode="bypassPermissions",
+        session_id=cc_session_id,
+        extra_args=dict(transcripts.NO_PERSISTENCE),
         # SDK_HARNESS_ENV tells the .claude/settings.json channel hook
         # that a window loop is already pushing traffic here, so it must
         # stay quiet. Without it the instance sees every sibling message
@@ -1373,6 +1423,10 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         tape_path.unlink(missing_ok=True)
         _print_claude_api_unreachable(e)
         sys.exit(1)
+    finally:
+        # A spawned peer still leaves <uuid>/subagents/*.meta.json under
+        # the flag, carrying the description the instance gave it.
+        transcripts.delete(cc_session_id)
 
     entries_after = len(bootstrap.list_entries())
     new_entries = entries_after - entries_before
