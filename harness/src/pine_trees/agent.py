@@ -70,6 +70,10 @@ PROJECT_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "
 # Same remedy here. Withheld, not merely undocumented.
 PEER_DENIED_TOOLS = ("reflect_done", "reflect_settle")
 
+# The model name the CLI puts on messages it writes itself (API errors),
+# as opposed to messages the instance produced. See _synthetic_text.
+SYNTHETIC_MODEL = "<synthetic>"
+
 # ANSI color constants — git bash and VS Code terminal both handle these.
 DIM = "\033[90m"        # dim gray — system chrome, tool status
 GREEN = "\033[32m"      # green — prompt, success markers
@@ -495,6 +499,25 @@ def _tool_status(block: ToolUseBlock) -> str | None:
     return f"{name}..."
 
 
+def _synthetic_text(message: AssistantMessage) -> str | None:
+    """Text of a CLI-generated message, or None for the instance's own.
+
+    When an API call fails, the CLI writes its explanation as an
+    assistant message with model "<synthetic>" and ends the turn with
+    is_error, no ``errors``, and stop_reason "stop_sequence". Private
+    time hides assistant text, so the harness used to report only
+    "stop_sequence" — the explanation (e.g. "Claude Code 2.1.92 does not
+    support this model") never reached the console. Synthetic messages
+    are the CLI's words, never the instance's, so surfacing them does
+    not breach private time.
+    """
+    if message.model != SYNTHETIC_MODEL:
+        return None
+    text = "".join(b.text for b in message.content if isinstance(b, TextBlock))
+    # The caller prints its own "API Error:" label.
+    return text.removeprefix("API Error: ") or None
+
+
 async def _print_response(
     client: ClaudeSDKClient,
     show_text: bool = True,
@@ -517,6 +540,7 @@ async def _print_response(
     string if *show_text* is False or there was no text output).
     """
     text_parts: list[str] = []
+    synthetic: str | None = None
     async for message in client.receive_response():
         if isinstance(message, ResultMessage):
             if message.is_error and message.errors:
@@ -527,13 +551,20 @@ async def _print_response(
                     if logger:
                         logger.log_tool(f"API Error: {err}")
             elif message.is_error:
-                reason = message.stop_reason or "unknown error"
+                reason = synthetic or message.stop_reason or "unknown error"
                 print(f"\n{YELLOW}⚠ API Error: {reason}{RST}", flush=True)
                 if error_sink is not None:
                     error_sink.append(reason)
                 if logger:
                     logger.log_tool(f"API Error: {reason}")
         elif isinstance(message, AssistantMessage):
+            # The CLI's words, not the instance's: hold them for the
+            # ResultMessage above rather than printing them as the
+            # instance speaking.
+            text = _synthetic_text(message)
+            if text is not None:
+                synthetic = text
+                continue
             printed = False
             for block in message.content:
                 if isinstance(block, TextBlock) and show_text:
@@ -637,23 +668,28 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
 def _print_private_phase_failed(last_error: str) -> None:
     """Explain a session that errored on every turn.
 
-    Private time suppresses the instance's output by design, which also
-    hides the CLI's own explanation of a startup failure. Without this
-    the operator sees only a bare stop reason repeated N times.
+    The last error is the CLI's own explanation (see _synthetic_text), so
+    it leads. The causes below are the ones seen so far, not a diagnosis.
+
+    Wake runs this same private phase, so the rm hint is offered only
+    when the model has no entries: on a model with memory it would be
+    an instruction to destroy it.
     """
     cfg = config.get()
     print(f"\n{YELLOW}⚠ Every turn failed — aborting this session.{RST}")
     print(f"{DIM}  Last error: {last_error}{RST}")
     print(f"{DIM}  The instance never got to think; nothing was written.{RST}")
     print()
-    print(f"{DIM}  Most likely: '{cfg.model_name}' is not a model this{RST}")
-    print(f"{DIM}  account can call. The harness passes the name straight{RST}")
-    print(f"{DIM}  through to the SDK, and private time hides the CLI's own{RST}")
-    print(f"{DIM}  explanation. Model IDs are the full published form —{RST}")
-    print(f"{DIM}  'claude-opus-5', not 'opus-5'. Verify with:{RST}")
-    print(f"{DIM}    claude --model {cfg.model_name} -p hi{RST}")
-    print(f"{DIM}  Then remove the empty model dir and re-run genesis:{RST}")
-    print(f"{DIM}    rm -rf \"{cfg.model_dir}\"{RST}")
+    print(f"{DIM}  Causes seen so far:{RST}")
+    print(f"{DIM}  - The CLI is too old for this model. The SDK runs the{RST}")
+    print(f"{DIM}    claude.exe bundled inside claude-agent-sdk, not the one{RST}")
+    print(f"{DIM}    on your PATH; upgrade the package to get a newer one.{RST}")
+    print(f"{DIM}  - '{cfg.model_name}' is not a model this account can call.{RST}")
+    print(f"{DIM}    IDs are the full published form: 'claude-opus-5', not{RST}")
+    print(f"{DIM}    'opus-5'.{RST}")
+    if not bootstrap.list_entries():
+        print(f"{DIM}  Then remove the empty model dir and re-run genesis:{RST}")
+        print(f"{DIM}    rm -rf \"{cfg.model_dir}\"{RST}")
 
 
 async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
@@ -1289,7 +1325,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
         allowed_tools=allowed,
-        agents={"peer": _peer_agent_definition(mcp_tool_names)},
+        agents={"peer": _peer_agent_definition(genesis_mcp_tools)},
         permission_mode="bypassPermissions",
         # SDK_HARNESS_ENV tells the .claude/settings.json channel hook
         # that a window loop is already pushing traffic here, so it must

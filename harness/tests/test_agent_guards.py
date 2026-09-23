@@ -18,10 +18,13 @@ from unittest.mock import patch
 import anyio
 import pytest
 from claude_agent_sdk import (
+    AssistantMessage,
     CLIConnectionError,
     CLINotFoundError,
     ClaudeSDKError,
     ProcessError,
+    ResultMessage,
+    TextBlock,
 )
 
 from pine_trees import agent, bootstrap, config as pt_config
@@ -218,6 +221,115 @@ class TestGenesisGuardRefusesNonEmptyCorpus:
 
         anyio.run(lambda: agent._run_genesis_async(2))
         assert call_count["n"] == 2
+
+
+class _ScriptedClient:
+    """Replays a fixed message sequence through receive_response()."""
+
+    def __init__(self, messages):
+        self._messages = messages
+
+    async def receive_response(self):
+        for m in self._messages:
+            yield m
+
+
+def _synthetic_failure(text):
+    """What the CLI sends when an API call fails: a synthetic assistant
+    message carrying the explanation, then an is_error result whose only
+    reason field is stop_reason="stop_sequence"."""
+    return [
+        AssistantMessage(content=[TextBlock(text=text)],
+                         model=agent.SYNTHETIC_MODEL,
+                         stop_reason="stop_sequence"),
+        ResultMessage(subtype="success", duration_ms=1, duration_api_ms=0,
+                      is_error=True, num_turns=1, session_id="s",
+                      stop_reason="stop_sequence", result=text),
+    ]
+
+
+class TestApiErrorsSurfaceTheCliExplanation:
+    """Regression guard: a genesis on a model the bundled CLI was too old
+    for printed "API Error: stop_sequence" and a guess about the model
+    name. The real reason sat in a synthetic assistant message that
+    private time hid along with the instance's text.
+    """
+
+    _WHY = "API Error: 400 Claude Code 2.1.92 does not support this model"
+
+    def test_private_turn_reports_the_cli_text_not_the_stop_reason(self, capsys):
+        errors = []
+        client = _ScriptedClient(_synthetic_failure(self._WHY))
+        anyio.run(lambda: agent._print_response(
+            client, show_text=False, error_sink=errors))
+        assert errors == ["400 Claude Code 2.1.92 does not support this model"]
+        out = capsys.readouterr().out
+        assert "does not support this model" in out
+        assert "API Error: stop_sequence" not in out
+        assert "API Error: API Error" not in out
+
+    def test_window_does_not_print_the_cli_text_as_the_instance(self, capsys):
+        client = _ScriptedClient(_synthetic_failure(self._WHY))
+        text = anyio.run(lambda: agent._print_response(client, show_text=True))
+        assert text == ""
+        # Once, as the warning — not a second time as if the instance said it.
+        assert capsys.readouterr().out.count("does not support") == 1
+
+    def test_instance_text_is_never_treated_as_synthetic(self):
+        msg = AssistantMessage(content=[TextBlock(text="private thought")],
+                               model="claude-opus-5-5")
+        assert agent._synthetic_text(msg) is None
+
+
+class TestPrivatePhaseFailedHint:
+    def test_offers_rm_only_when_the_model_has_no_entries(self, monkeypatch, capsys):
+        monkeypatch.setattr(bootstrap, "list_entries", lambda: [])
+        agent._print_private_phase_failed("x")
+        assert "rm -rf" in capsys.readouterr().out
+
+    def test_never_offers_rm_on_a_model_with_memory(self, monkeypatch, capsys):
+        # Wake runs the same private phase. An rm hint here would be an
+        # instruction to delete a model's whole corpus.
+        monkeypatch.setattr(bootstrap, "list_entries", lambda: [_FakeEntry()])
+        agent._print_private_phase_failed("x")
+        assert "rm -rf" not in capsys.readouterr().out
+
+
+class TestGenesisSessionBuildsItsOptions:
+    """Regression guard: the peer-agent line was pasted into
+    _run_genesis_session referencing _run_async's local `mcp_tool_names`,
+    which genesis calls `genesis_mcp_tools`. Every ./genesis crashed with
+    NameError before reaching the SDK, and nothing noticed because the
+    tests above stub _run_genesis_session out entirely. Drive the real one
+    as far as the SDK client and inspect what it would have been given.
+    """
+
+    def test_reaches_the_sdk_with_a_scoped_peer(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(agent, "HARNESS_DIR", tmp_path)
+        monkeypatch.setattr(bootstrap, "list_entries", lambda: [])
+        monkeypatch.setattr(bootstrap, "assemble_tape",
+                            lambda n=3, genesis_mode=False: "tape")
+
+        class _Sentinel(Exception):
+            pass
+
+        captured = {}
+
+        def _capture(*a, **kw):
+            captured["options"] = kw["options"]
+            raise _Sentinel()
+        monkeypatch.setattr(agent, "ClaudeSDKClient", _capture)
+
+        with pytest.raises(_Sentinel):
+            anyio.run(lambda: agent._run_genesis_session(1, 1))
+
+        options = captured["options"]
+        peer_tools = options.agents["peer"].tools
+        for denied in agent.PEER_DENIED_TOOLS:
+            assert agent._mcp_tool_name(denied) not in peer_tools
+        # Genesis has no mail or channel; the peer must not gain them.
+        assert agent._mcp_tool_name("reflect_mail") not in peer_tools
+        assert agent._mcp_tool_name("reflect_read") in peer_tools
 
 
 # ---------- Regression guards: logger method names in agent.py ----------
