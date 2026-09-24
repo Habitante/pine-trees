@@ -7,6 +7,7 @@ so we stay dependency-free (aside from cryptography for encryption).
 All entries are encrypted at rest when a key is available.
 """
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -165,7 +166,16 @@ def edit_entry(
     )
 
     body = content if content is not None else entry.get("content", "")
+    before = path.stat()
     _write_file(path, frontmatter + body)
+    if content is None:
+        # Metadata-only edits (description, flags) are gardening, not new
+        # work. The tape picks its "most recent" full-text slots and its
+        # "last session entry" by mtime, so a bumped mtime would pull an
+        # old entry back into hot context: exactly what shortening its
+        # description was meant to avoid. Content edits still count as
+        # recent, because updating a living entry is work.
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     return filename
 
 

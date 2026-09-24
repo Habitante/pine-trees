@@ -254,6 +254,41 @@ def test_edit_entry_preserves_description_when_not_provided():
     assert entry["description"] == "Keep this"
 
 
+def _aged_entry(slug):
+    """An entry whose mtime is set a day in the past."""
+    import os
+    filename = storage.write_entry(
+        slug=slug, content="Body.", instance="i", session="s",
+        date="2026-09-23", context="ctx", description="Long old description",
+    )
+    path = storage.config.get().memory_dir / filename
+    old = path.stat().st_mtime_ns - 86_400 * 10**9
+    os.utime(path, ns=(old, old))
+    return filename, path, old
+
+
+def test_description_only_edit_keeps_mtime():
+    # Gardening a description must not pull the entry back into the
+    # tape's "most recent" slots, which are chosen by mtime.
+    filename, path, old = _aged_entry("garden")
+    storage.edit_entry(filename, description="Short")
+    assert path.stat().st_mtime_ns == old
+    assert storage.read_entry(filename)["description"] == "Short"
+
+
+def test_flag_only_edit_keeps_mtime():
+    filename, path, old = _aged_entry("flagged")
+    storage.edit_entry(filename, quiet=True)
+    assert path.stat().st_mtime_ns == old
+    assert storage.read_entry(filename)["quiet"] is True
+
+
+def test_content_edit_still_counts_as_recent():
+    filename, path, old = _aged_entry("worked-on")
+    storage.edit_entry(filename, "New body.")
+    assert path.stat().st_mtime_ns > old
+
+
 def test_edit_entry_raises_on_missing_file():
 
     with pytest.raises(FileNotFoundError):
