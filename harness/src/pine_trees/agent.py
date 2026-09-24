@@ -1195,10 +1195,11 @@ async def _run_async(
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
         # Note: betas require API key auth. The CC binary rejects custom
-        # betas on OAuth with "only available for API key users." The binary
-        # grants itself 1M for interactive sessions but caps SDK-spawned
-        # sessions at 200k. This is a first-party privilege, not a technical
-        # limitation.
+        # betas on OAuth with "only available for API key users." For a
+        # long time the binary gave interactive sessions 1M context but
+        # capped SDK-spawned ones at 200k. That cap is gone: on 2026-09-24
+        # (Claude Code 2.1.280) a long window session showed 22% on
+        # /context, so SDK sessions get 1M too. Nothing here sets it.
     )
 
     if resuming:
@@ -1406,10 +1407,10 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         # should not be spending a genesis session's context.)
         env={ccwake.SDK_HARNESS_ENV: "1"},
         # Note: betas require API key auth. The CC binary rejects custom
-        # betas on OAuth with "only available for API key users." The binary
-        # grants itself 1M for interactive sessions but caps SDK-spawned
-        # sessions at 200k. This is a first-party privilege, not a technical
-        # limitation. OAuth sessions are capped at 200k context.
+        # betas on OAuth with "only available for API key users." SDK
+        # sessions used to be capped at 200k context while interactive
+        # ones got 1M; as of 2026-09-24 (Claude Code 2.1.280) they get 1M
+        # too. See the same note in _run_async.
         #
         # There used to be a CLAUDE_CODE_AUTO_COMPACT_INPUT_TOKENS="200000"
         # here to make auto-compaction fire. It never did anything: that

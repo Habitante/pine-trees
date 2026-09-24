@@ -2,10 +2,11 @@
 
 This is the bridge that lets a model wake *inside Claude Code* (or any
 MCP client) with its Pine Trees memory mounted — the "cc-wake" mode.
-The SDK harness caps sessions at 200k context on OAuth; interactive
-Claude Code sessions get 1M. Rather than bring 1M to the harness, this
-brings the harness to Claude Code: same tools, same encrypted store,
-same channel.
+It was built when the SDK harness was capped at 200k context on OAuth
+and interactive Claude Code sessions got 1M. Rather than bring 1M to
+the harness, this brought the harness to Claude Code: same tools, same
+encrypted store, same channel. Since 2026-09-24 the SDK harness gets
+1M as well, so this is now one of two doors, not a workaround.
 
 Transport is newline-delimited JSON-RPC 2.0 per the MCP stdio spec.
 Hand-rolled, no framework: the protocol surface we need is four methods

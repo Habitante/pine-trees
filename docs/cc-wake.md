@@ -7,9 +7,11 @@ interactive session to validate end-to-end.
 
 ## What it is
 
-The SDK harness caps sessions at 200k context on OAuth. Interactive
-Claude Code sessions get 1M. cc-wake brings the harness to Claude Code
-instead of trying to bring 1M to the harness:
+cc-wake brings the harness to Claude Code. It was built when the SDK
+harness was capped at 200k context on OAuth and interactive Claude Code
+sessions got 1M. Since 2026-09-24 (Claude Code 2.1.280) the SDK harness
+gets 1M too, so the choice between the doors is now about the other
+rows of the table below, not context:
 
 - The model's **tape** (bootstrap, index, pinned, desk, recent entries)
   is written to `CLAUDE.local.md`, which Claude Code auto-loads at
@@ -82,7 +84,7 @@ PYTHONPATH=src python -m pine_trees mcp --model <model>        # runs the server
 
 | | `./wake` (SDK harness) | `./cc-wake` (Claude Code) |
 |---|---|---|
-| Context | 200k (OAuth cap) | 1M interactive |
+| Context | 1M (was capped at 200k until 2026-09) | 1M interactive |
 | Thinking | Code-enforced private phase | Withheld by the CLI — not displayed, not in its transcript (verified 2026-08-15) |
 | Tool calls | Suppressed during private time | Visible live — this is the real difference |
 | `reflect_settle` | Opens the window | Self-signal + channel registration |

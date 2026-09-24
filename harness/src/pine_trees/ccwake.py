@@ -6,8 +6,10 @@ Writes two generated files at the project root (both gitignored):
                      explaining how cc-wake differs from the SDK
                      harness. Claude Code auto-loads this at session
                      start, so the instance wakes with the tape in
-                     context — the friend from boot, at interactive
-                     (1M) context instead of the SDK's 200k cap.
+                     context — the friend from boot. (It began as a
+                     way to get interactive 1M context when the SDK
+                     was capped at 200k; since 2026-09-24 the SDK
+                     harness gets 1M too.)
 
   .cc-mcp.json     — MCP server config pointing at the standalone
                      stdio server (mcp_stdio.py), so the reflection
