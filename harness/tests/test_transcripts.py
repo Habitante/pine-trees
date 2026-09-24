@@ -326,6 +326,13 @@ class TestWakeExitPaths:
         wake(_done)
         assert "no-session-persistence" not in (_CliStandIn.seen[0].extra_args or {})
 
+    def test_a_big_message_does_not_kill_the_session(self, wake):
+        # 2026-09-24: two PNGs read in parallel came back as one ~1 MB
+        # message and the SDK's default buffer ended the window.
+        wake(_done)
+        assert _CliStandIn.seen[0].max_buffer_size == agent.MAX_MESSAGE_BYTES
+        assert agent.MAX_MESSAGE_BYTES >= 16 * 1024 * 1024
+
     def test_boot_sweeps_finished_sessions(self, wake, capsys):
         old = str(uuid.uuid4())
         _plant(old)
@@ -367,6 +374,7 @@ class TestGenesis:
 
         (options,) = _CliStandIn.seen
         assert options.extra_args == transcripts.NO_PERSISTENCE
+        assert options.max_buffer_size == agent.MAX_MESSAGE_BYTES
         assert transcripts._canonical(options.session_id) == options.session_id
         # The stand-in planted a transcript and a subagents folder, as a
         # peer would under the flag (meta.json); none of it survives.

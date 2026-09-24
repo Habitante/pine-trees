@@ -46,6 +46,14 @@ from .tools import SessionState, build_tools, channel_heartbeat
 MCP_SERVER_NAME = "pine_trees"
 MAX_PRIVATE_TURNS = 15
 
+# The SDK drops the whole session if one JSON message from the CLI tops
+# its buffer, which defaults to 1 MB. Images come back base64-encoded, and
+# parallel tool results arrive in one message: on 2026-09-24 two chart
+# PNGs (400 KB + 316 KB, ~955 KB encoded) read at once killed a window
+# mid-conversation with CLIJSONDecodeError. The limit is a check on
+# pending length, not an allocation, so a generous one costs nothing.
+MAX_MESSAGE_BYTES = 64 * 1024 * 1024
+
 # Claude Code built-in tools granted to the instance.
 # The instance has full project tools — including Write, Edit, and Bash —
 # because agency is part of the trust contract. An instance that wants to
@@ -1178,6 +1186,7 @@ async def _run_async(
         allowed_tools=allowed,
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
+        max_buffer_size=MAX_MESSAGE_BYTES,
         # Tells the .claude/settings.json channel hook that a window
         # loop is already pushing traffic here, so it must stay quiet.
         # Without it the instance sees every sibling message twice and
@@ -1386,6 +1395,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
         agents={"peer": _peer_agent_definition(genesis_mcp_tools)},
         permission_mode="bypassPermissions",
         session_id=cc_session_id,
+        max_buffer_size=MAX_MESSAGE_BYTES,
         extra_args=dict(transcripts.NO_PERSISTENCE),
         # SDK_HARNESS_ENV tells the .claude/settings.json channel hook
         # that a window loop is already pushing traffic here, so it must
