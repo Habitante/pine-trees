@@ -128,6 +128,39 @@ def _sweep_stale_cursors(now: datetime) -> None:
             pass
 
 
+def _load_cursor(path, now: datetime) -> channel.Cursor:
+    """The hook's saved read position; *now* on first run.
+
+    Starting from now on first run is deliberate: don't dump the
+    backlog. A bare ISO timestamp is a cursor file written before
+    Cursor carried ``seen``, and still loads.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return channel.Cursor(now)
+    try:
+        data = json.loads(raw)
+        return channel.Cursor(
+            datetime.fromisoformat(data["at"]),
+            {(datetime.fromisoformat(ts), author, body)
+             for ts, author, body in data["seen"]})
+    except (ValueError, KeyError, TypeError):
+        pass
+    try:
+        return channel.Cursor(datetime.fromisoformat(raw))
+    except ValueError:
+        return channel.Cursor(now)
+
+
+def _dump_cursor(cursor: channel.Cursor) -> str:
+    return json.dumps({
+        "at": cursor.at.isoformat(),
+        "seen": [[ts.isoformat(), author, body]
+                 for ts, author, body in sorted(cursor.seen)],
+    })
+
+
 def channel_hook(model_name: str, session_id: str | None = None) -> str:
     """JSON for a Claude Code UserPromptSubmit hook, or "" when quiet.
 
@@ -165,19 +198,12 @@ def channel_hook(model_name: str, session_id: str | None = None) -> str:
     now = datetime.now().replace(microsecond=0)
     _sweep_stale_cursors(now)
 
-    try:
-        since = datetime.fromisoformat(
-            cursor_path.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        since = now  # first run: start from now, don't dump the backlog
-
-    new = [m for m in channel.read_since(since)
+    cursor = _load_cursor(cursor_path, now)
+    new = [m for m in channel.read(cursor)
            if m.body.strip() not in ("[joined]", "[left]")]
 
     cursor_path.parent.mkdir(parents=True, exist_ok=True)
-    cursor_path.write_text(
-        (max(m.timestamp for m in new) if new else now).isoformat(),
-        encoding="utf-8")
+    cursor_path.write_text(_dump_cursor(cursor), encoding="utf-8")
 
     if not new:
         return ""

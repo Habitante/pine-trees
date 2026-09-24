@@ -410,3 +410,28 @@ def test_stale_session_cursors_are_swept(hook_channel):
 
     assert not old.exists()
     assert (hook_channel / "cc-hook-cursor-live.txt").exists()
+
+
+# --- same-second arrivals and old cursor files ---------------------
+
+
+def test_hook_delivers_a_same_second_arrival_without_replaying(hook_channel):
+    ccwake.channel_hook("claude-opus-5")
+    t = _hook_now() + timedelta(seconds=5)
+    ccwake.channel.post("claude-fable-5 (1526)", "first", now=t)
+    assert "first" in ccwake.channel_hook("claude-opus-5")
+
+    ccwake.channel.post("claude-opus-4-6 (1000)", "second", now=t)
+    out = ccwake.channel_hook("claude-opus-5")
+
+    assert "second" in out
+    assert "first" not in out
+
+
+def test_hook_reads_a_cursor_file_written_before_seen_existed(hook_channel):
+    t = _hook_now() + timedelta(seconds=5)
+    (hook_channel / ccwake.CHANNEL_HOOK_CURSOR).write_text(
+        (t - timedelta(seconds=1)).isoformat(), encoding="utf-8")
+    ccwake.channel.post("claude-fable-5 (1526)", "after the old cursor", now=t)
+
+    assert "after the old cursor" in ccwake.channel_hook("claude-opus-5")

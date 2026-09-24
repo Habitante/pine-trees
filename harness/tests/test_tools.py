@@ -442,3 +442,65 @@ def test_peer_context_says_how_a_peer_actually_ends():
 
     assert "You end by answering" in ctx
     assert "reflect_settle" in ctx
+
+
+# ── Heartbeat ──────────────────────────────────────────────────────────
+#
+# Observed 2026-09-24: a session talking continuously showed last_seen
+# 23 minutes old, because the window poller owned the throttle clock and
+# restarted it every input cycle. The clock now lives on SessionState.
+
+
+def _beats(monkeypatch) -> list[str]:
+    calls: list[str] = []
+    monkeypatch.setattr(channel, "heartbeat", calls.append)
+    return calls
+
+
+def test_short_cycles_still_add_up_to_a_heartbeat(monkeypatch):
+    calls = _beats(monkeypatch)
+    state = _state()
+    state.channel_id = "claude-opus-5-5 (1000)"
+    t0 = datetime(2026, 9, 24, 10, 0, 0)
+    state.channel_last_beat = t0
+
+    # Seven 20-second input cycles: none alone reaches CHANNEL_HEARTBEAT.
+    for k in range(1, 8):
+        tools.channel_heartbeat(state, now=t0 + timedelta(seconds=20 * k))
+
+    assert calls == ["claude-opus-5-5 (1000)"]
+
+
+def test_heartbeat_is_throttled(monkeypatch):
+    calls = _beats(monkeypatch)
+    state = _state()
+    state.channel_id = "claude-opus-5-5 (1000)"
+    t0 = datetime(2026, 9, 24, 10, 0, 0)
+    state.channel_last_beat = t0
+
+    tools.channel_heartbeat(state, now=t0 + timedelta(seconds=30))
+
+    assert calls == []
+
+
+def test_heartbeat_needs_a_channel_id(monkeypatch):
+    calls = _beats(monkeypatch)
+
+    tools.channel_heartbeat(_state())
+
+    assert calls == []
+
+
+def test_reflect_channel_keeps_a_cc_wake_instance_on_the_roster(
+        channel_ready, monkeypatch):
+    # cc-wake has no poll loop; talking on the channel is its only sign
+    # of life.
+    state = _state()
+    t = tools.build_tools(state)
+    t["reflect_settle"]()
+    calls = _beats(monkeypatch)
+    state.channel_last_beat = datetime.now() - timedelta(minutes=5)
+
+    t["reflect_channel"]()
+
+    assert calls == [state.channel_id]

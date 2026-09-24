@@ -38,10 +38,9 @@ from prompt_toolkit.patch_stdout import patch_stdout
 
 from . import (bootstrap, ccwake, channel, config, crypto, mail, migrate,
                sessions, transcripts)
-from .config import (CHANNEL_HEARTBEAT, CHANNEL_POLL_INTERVAL,
-                     HARNESS_DIR, PROJECT_ROOT)
+from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
-from .tools import SessionState, build_tools
+from .tools import SessionState, build_tools, channel_heartbeat
 
 
 MCP_SERVER_NAME = "pine_trees"
@@ -726,6 +725,20 @@ async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
         pass
 
 
+def _relay_human(state: SessionState, text: str) -> None:
+    """Post what the person typed here so siblings see it too.
+
+    Posted as "human", not under our channel id, so exclude_author
+    cannot keep it from coming back to us; the cursor skips it instead.
+    Not all "human" posts: when the person types in a sibling's
+    terminal, that sibling relays it, and we need to see that one.
+
+    This used to set the cursor to now() instead, which also skipped
+    every sibling message since the last poll.
+    """
+    state.channel_cursor.skip(channel.post("human", text))
+
+
 async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     """Concurrent window: background responses + channel polling.
 
@@ -828,25 +841,21 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 async def _poll_channel():
                     """Poll channel for sibling messages and join/leave events.
 
-                    Uses a local cursor to track what's been read within
-                    this input cycle.  Join/leave detection uses status.json
-                    (authoritative) rather than channel log entries (which
-                    are subject to cursor timing races).
+                    Reads advance state.channel_cursor directly: every
+                    message read lands in channel_messages, which the
+                    next phase always consumes. Join/leave detection uses
+                    status.json (authoritative) rather than channel log
+                    entries (which are subject to cursor timing races).
                     """
                     nonlocal channel_messages, _known_siblings
                     if not state.channel_cursor:
                         return  # no channel active
-                    local_cursor = state.channel_cursor
-                    last_beat = datetime.now()
                     while True:
                         await anyio.sleep(CHANNEL_POLL_INTERVAL)
                         # Say we're still here, so the roster can age out
-                        # sessions that died without cleanup. Throttled:
-                        # the poll runs every few seconds and this takes
-                        # the status lock. See channel.heartbeat.
-                        if (datetime.now() - last_beat) >= CHANNEL_HEARTBEAT:
-                            channel.heartbeat(state.channel_id)
-                            last_beat = datetime.now()
+                        # sessions that died without cleanup. Throttled
+                        # inside; see channel_heartbeat.
+                        channel_heartbeat(state)
                         has_new = False
                         # Detect join/leave via status.json
                         current = {
@@ -870,15 +879,14 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                         _known_siblings = current
                         # Check for new messages (skip join/leave log
                         # entries — already handled via status.json above)
-                        new = channel.read_since(
-                            local_cursor,
+                        new = channel.read(
+                            state.channel_cursor,
                             exclude_author=state.channel_id,
                         )
                         new = [m for m in new
                                if m.body.strip() not in ("[joined]", "[left]")]
                         if new:
                             channel_messages.extend(new)
-                            local_cursor = max(m.timestamp for m in new)
                             has_new = True
                         if has_new:
                             # Cancel input if user hasn't typed anything
@@ -906,9 +914,6 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                               flush=True)
                         print(f"{msg.body}\n", flush=True)
                         logger.log_channel(msg.author, msg.body)
-                    state.channel_cursor = max(
-                        m.timestamp for m in channel_messages
-                    )
 
                 print(f"{DIM}---{RST}\n", end="", flush=True)
                 stripped = (user_input or "").strip()
@@ -917,6 +922,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     logger.log_system("Session ended by /end")
                     break
                 if stripped in ("/context", "/status"):
+                    # Known gap: channel messages shown above never reach the model.
                     await _show_context(client, state)
                     continue
 
@@ -961,8 +967,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     # Post user input to channel so siblings see what
                     # the human said (not just the model's response).
                     if state.channel_cursor and state.channel_id:
-                        channel.post("human", stripped)
-                        state.channel_cursor = datetime.now().replace(microsecond=0)
+                        _relay_human(state, stripped)
                     # User typing breaks any holding cascade
                     last_autopost_body = None
                 elif not channel_messages:
@@ -981,7 +986,9 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     if stripped_resp != (last_autopost_body or ""):
                         channel.post(state.channel_id, response_text)
                         last_autopost_body = stripped_resp
-                    state.channel_cursor = datetime.now().replace(microsecond=0)
+                # The poller is stopped while the model generates, and a
+                # turn can run for minutes. Beat on the way out of it too.
+                channel_heartbeat(state)
 
                 # Context awareness — check usage after each response and
                 # prepare a note for the next query so the instance knows
@@ -1206,7 +1213,9 @@ async def _run_async(
                 if prior_channel_id:
                     state.channel_id = prior_channel_id
                     channel.register(state.channel_id)
-                    state.channel_cursor = datetime.now().replace(microsecond=0)
+                    state.channel_cursor = channel.Cursor(
+                        datetime.now().replace(microsecond=0))
+                    state.channel_last_beat = datetime.now()
 
                 # Orient the instance — it has full conversation history
                 # from the CC binary, but needs to know the session was
@@ -1245,7 +1254,8 @@ async def _run_async(
                     instance=state.instance,
                     phase="window",
                     channel_id=state.channel_id,
-                    channel_cursor=state.channel_cursor,
+                    channel_cursor=(state.channel_cursor.at
+                                    if state.channel_cursor else None),
                     started_at=state.started_at,
                     cc_session_id=cc_session_id,
                 )

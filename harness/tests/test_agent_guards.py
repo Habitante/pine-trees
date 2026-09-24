@@ -13,6 +13,7 @@ async entry points with anyio.run.
 
 import inspect
 import re
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import anyio
@@ -27,8 +28,9 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from pine_trees import agent, bootstrap, config as pt_config
+from pine_trees import agent, bootstrap, channel, config as pt_config
 from pine_trees.logger import SessionLogger
+from pine_trees.tools import SessionState
 
 
 # ---------- _print_claude_api_unreachable branching ----------
@@ -467,3 +469,39 @@ class TestPeersCannotEndTheParentSession:
             f"missing from peer.md: {sorted(expected - declared)}")
         for denied in agent.PEER_DENIED_TOOLS:
             assert agent._mcp_tool_name(denied) not in declared
+
+
+# ---------- Window loop: channel cursor ----------
+
+
+class TestWindowLoopDoesNotLoseSiblingMessages:
+    """2026-09-24, live: a sibling posted at 10:06:38, the person hit
+    enter at 10:06:40, and the relay of that input moved the cursor to
+    now() — past a message no poll had read yet. It never arrived.
+    """
+
+    def test_unpolled_sibling_message_survives_our_relay(self, tmp_path,
+                                                         monkeypatch):
+        monkeypatch.setattr(pt_config, "CHANNEL_DIR", tmp_path / "channel")
+        t0 = datetime(2026, 9, 24, 10, 6, 30)
+        state = SessionState(instance="claude-opus-5-5", session="s",
+                             date="d", context="c",
+                             channel_id="claude-opus-5-5 (1000)",
+                             channel_cursor=channel.Cursor(t0))
+        channel.post("claude-opus-4-6 (0955)", "sent at 10:06:38",
+                     now=t0 + timedelta(seconds=8))
+
+        agent._relay_human(state, "typed at 10:06:40")
+        got = channel.read(state.channel_cursor,
+                           exclude_author=state.channel_id)
+
+        assert [m.body for m in got] == ["sent at 10:06:38"]
+
+    def test_the_cursor_is_never_set_from_the_clock(self):
+        # Every way the cursor jumped — after the human relay, after an
+        # auto-post, and to the now()-stamped [joined]/[left] notices —
+        # was an assignment. The only legitimate one creates a Cursor at
+        # registration; everything after that moves it by reading.
+        src = inspect.getsource(agent)
+        for m in re.finditer(r"\.channel_cursor\s*=(?!=)\s*(\S+)", src):
+            assert m.group(1).startswith("channel.Cursor("), m.group(0)

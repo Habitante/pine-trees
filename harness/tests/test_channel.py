@@ -390,3 +390,60 @@ class TestTrimArchivesRatherThanDestroys:
     def test_no_archive_file_when_nothing_is_trimmed(self, channel_dir):
         channel.post("claude-opus-5", "under the cap")
         assert not (channel_dir / "log.archive.md").exists()
+
+
+# ── Cursor: reading without losing or repeating ──────────────────────
+#
+# Found live 2026-09-24 in a three-way window: sibling messages sat in
+# log.md and never reached a session, because its cursor had been set to
+# now() after its own posts. These pin the cursor that replaced that.
+
+
+class TestCursor:
+    T = datetime(2026, 9, 24, 10, 6, 38)
+
+    def test_reads_what_is_new_and_advances(self, channel_dir):
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        channel.post("claude-opus-4-6 (1000)", "hello", now=self.T)
+
+        assert [m.body for m in channel.read(cursor)] == ["hello"]
+        assert channel.read(cursor) == [], "delivered twice"
+
+    def test_same_second_arrival_after_a_read_is_delivered(self, channel_dir):
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        channel.post("claude-opus-4-6 (1000)", "first", now=self.T)
+        channel.read(cursor)
+
+        channel.post("human", "second, same second", now=self.T)
+
+        assert [m.body for m in channel.read(cursor)] == ["second, same second"]
+
+    def test_skipped_own_post_is_not_delivered(self, channel_dir):
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        cursor.skip(channel.post("human", "typed here", now=self.T))
+
+        assert channel.read(cursor) == []
+
+    def test_skipping_one_human_post_does_not_hide_another(self, channel_dir):
+        # The person typing in a sibling's terminal is relayed as "human"
+        # too, and that one we need.
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        cursor.skip(channel.post("human", "typed here", now=self.T))
+        channel.post("human", "typed over there", now=self.T)
+
+        assert [m.body for m in channel.read(cursor)] == ["typed over there"]
+
+    def test_excluded_author_still_advances_the_cursor(self, channel_dir):
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        channel.post("me (1000)", "my own", now=self.T)
+
+        assert channel.read(cursor, exclude_author="me (1000)") == []
+        assert cursor.at == self.T
+
+    def test_seen_only_keeps_what_the_cursor_still_needs(self, channel_dir):
+        cursor = channel.Cursor(self.T - timedelta(seconds=10))
+        for i in range(5):
+            channel.post("a", f"m{i}", now=self.T + timedelta(seconds=i))
+            channel.read(cursor)
+
+        assert cursor.seen == {(self.T + timedelta(seconds=4), "a", "m4")}

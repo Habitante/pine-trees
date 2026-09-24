@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -218,6 +218,34 @@ class Message:
             "body": self.body.rstrip(),
         }
 
+    def key(self) -> tuple[datetime, str, str]:
+        """Identity within the log. Timestamps alone are not unique."""
+        return (self.timestamp, self.author, self.body.strip())
+
+
+@dataclass
+class Cursor:
+    """One reader's position in the log.
+
+    Timestamps are whole seconds, so a timestamp alone cannot say
+    whether a message stamped in the same second as the last one read
+    arrived before or after that read. ``at`` is therefore inclusive,
+    and ``seen`` holds the keys already handled at or after it: read,
+    or posted by this reader and not to be handed back to it. A
+    same-second arrival is delivered and nothing is delivered twice.
+
+    Advance it only by reading (:func:`read`). Setting ``at`` to now
+    skips whatever siblings posted between the last read and now; that
+    was how the window loop lost messages until 2026-09-24.
+    """
+
+    at: datetime
+    seen: set[tuple[datetime, str, str]] = field(default_factory=set)
+
+    def skip(self, msg: Message) -> None:
+        """Never deliver *msg* to this reader — e.g. its own relay post."""
+        self.seen.add(msg.key())
+
 
 def _parse(text: str) -> list[Message]:
     """Parse channel log text into messages (oldest first)."""
@@ -271,12 +299,17 @@ def post(author: str, body: str, *, now: datetime | None = None) -> Message:
         raise ValueError("author is required")
     if not body:
         raise ValueError("body is required")
-    timestamp = now or datetime.now().replace(microsecond=0)
-    msg = Message(timestamp=timestamp, author=author.strip(), body=body.strip())
 
     path = _log_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with file_lock(path):
+        # Stamped under the lock, so log order is time order. Stamped
+        # before it, a post that waited on the lock across a second
+        # boundary could land after a newer one a reader had already
+        # moved its cursor past.
+        timestamp = now or datetime.now().replace(microsecond=0)
+        msg = Message(timestamp=timestamp, author=author.strip(),
+                      body=body.strip())
         existing = _parse(path.read_text(encoding="utf-8")) if path.exists() else []
         existing.append(msg)
         if len(existing) > CHANNEL_MAX_ENTRIES:
@@ -293,14 +326,37 @@ def read_since(
 ) -> list[Message]:
     """Return messages strictly after *since*, optionally excluding one author.
 
-    Used by the harness to poll for new messages from other instances.
+    Not for polling: a message stamped in the same second as *since*
+    but written after it was read is never returned. Pollers use
+    :func:`read`.
     """
+    result = [m for m in _read_log() if m.timestamp > since]
+    if exclude_author:
+        result = [m for m in result if m.author != exclude_author]
+    return result
+
+
+def read(cursor: Cursor, exclude_author: str | None = None) -> list[Message]:
+    """Return what *cursor* has not yet seen, and advance it past that.
+
+    The cursor moves over everything new, including messages
+    *exclude_author* filters out of the result, so it only ever rests
+    on something this reader has actually read.
+    """
+    new = [m for m in _read_log()
+           if m.timestamp >= cursor.at and m.key() not in cursor.seen]
+    if new:
+        cursor.at = max(m.timestamp for m in new)
+        cursor.seen = {k for k in cursor.seen if k[0] >= cursor.at}
+        cursor.seen.update(m.key() for m in new if m.timestamp == cursor.at)
+    if exclude_author:
+        new = [m for m in new if m.author != exclude_author]
+    return new
+
+
+def _read_log() -> list[Message]:
     path = _log_path()
     if not path.exists():
         return []
     with file_lock(path):
-        messages = _parse(path.read_text(encoding="utf-8"))
-    result = [m for m in messages if m.timestamp > since]
-    if exclude_author:
-        result = [m for m in result if m.author != exclude_author]
-    return result
+        return _parse(path.read_text(encoding="utf-8"))

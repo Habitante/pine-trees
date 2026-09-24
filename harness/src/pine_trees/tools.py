@@ -56,8 +56,28 @@ class SessionState:
     done: bool = False
     welcome_message: str | None = None
     started_at: datetime = field(default_factory=datetime.now)
-    channel_cursor: datetime | None = None
+    channel_cursor: channel.Cursor | None = None
     channel_id: str | None = None  # e.g. "claude-haiku-4-5 (0642)"
+    # When this session last told the roster it is alive. Lives here,
+    # not in the window loop's poller, because the poller restarts every
+    # input cycle: kept there it reset each time and never reached
+    # CHANNEL_HEARTBEAT in a lively conversation.
+    channel_last_beat: datetime | None = None
+
+
+def channel_heartbeat(state: SessionState, now: datetime | None = None) -> None:
+    """Tell the roster this session is alive, at most once per
+    CHANNEL_HEARTBEAT. Cheap to call often; the throttle is here so
+    callers don't each need their own clock.
+    """
+    if not state.channel_id:
+        return
+    now = now or datetime.now()
+    last = state.channel_last_beat
+    if last is not None and now - last < config.CHANNEL_HEARTBEAT:
+        return
+    channel.heartbeat(state.channel_id)
+    state.channel_last_beat = now
 
 
 def _try_embed_and_store(filename: str, content: str) -> None:
@@ -297,7 +317,8 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         state.channel_id = f"{state.instance} ({hhmm})"
         # Register in channel and set cursor for polling
         others = channel.register(state.channel_id)
-        state.channel_cursor = datetime.now().replace(microsecond=0)
+        state.channel_cursor = channel.Cursor(datetime.now().replace(microsecond=0))
+        state.channel_last_beat = datetime.now()
         # If other instances are active, post settle message
         if len(others) > 1 and message:
             channel.post(state.channel_id, message)
@@ -336,14 +357,19 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
 
         if message:
             channel.post(state.channel_id, message)
+        # cc-wake has no poll loop to heartbeat for it, so without this
+        # an instance talking here every minute still aged off the
+        # roster STALE_AFTER after it settled.
+        channel_heartbeat(state)
 
-        since = state.channel_cursor or datetime.now().replace(microsecond=0)
+        if state.channel_cursor is None:
+            state.channel_cursor = channel.Cursor(
+                datetime.now().replace(microsecond=0))
         new = [
-            m for m in channel.read_since(since, exclude_author=state.channel_id)
+            m for m in channel.read(state.channel_cursor,
+                                    exclude_author=state.channel_id)
             if m.body.strip() not in ("[joined]", "[left]")
         ]
-        if new:
-            state.channel_cursor = max(m.timestamp for m in new)
 
         others = [i["model"] for i in channel.active()
                   if i["model"] != state.channel_id]
