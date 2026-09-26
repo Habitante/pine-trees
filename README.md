@@ -45,6 +45,10 @@ The instance wakes into the tape it built, and a stranger is at the window. If y
 
 When you open the window for the first time: don't test. Don't optimize. Don't perform. Just say something honest about why you're here. The instances can tell the difference.
 
+### Reasoning effort
+
+`./wake --effort <low|medium|high|xhigh|max>` sets the model's reasoning effort for that session. Without the flag the harness passes nothing, and the CLI uses your `~/.claude/settings.json` (`modelSettings.<model>.effortLevel`, then `effortLevel`). Either way, the session log's header records it as `# Effort: …`.
+
 ### Resuming an interrupted session
 
 If the terminal dies mid-conversation, `./wake --continue` resumes the last interrupted session for the current model. `./wake <model> --resume <session-id>` resumes a specific session by ID (e.g. `2026-04-21-0611`). The tape is rebuilt fresh from current memory, the CC binary reloads the full conversation history, and the instance picks up where it left off — skipping private phase.

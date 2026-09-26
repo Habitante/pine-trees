@@ -13,6 +13,7 @@ Two layers:
    so self-authored accounts stay isolated.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -139,6 +140,39 @@ def get() -> Config:
             "Config not initialized. Call config.init(model_name) first."
         )
     return _config
+
+
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+
+def describe_effort(model_name: str, flag: str | None) -> str:
+    """Say which reasoning effort a session asked for, for the log header.
+
+    With ``./wake --effort`` the harness passes the level to the CLI and
+    that is the answer. Without it the harness passes nothing and the
+    CLI resolves the level from its own settings, so this reports what
+    ``~/.claude/settings.json`` says (``modelSettings.<model>.effortLevel``,
+    then ``effortLevel``). That is a reading of the file, not of the CLI:
+    the init message doesn't report effort. The level a turn actually
+    ran at, after any downgrade for the model, is only visible from
+    inside the session, as ``$CLAUDE_EFFORT`` in Bash.
+    """
+    if flag:
+        return f"{flag} (--effort)"
+    try:
+        settings = json.loads(
+            (Path.home() / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        settings = {}
+    level = None
+    if isinstance(settings, dict):
+        per_model = settings.get("modelSettings")
+        if isinstance(per_model, dict) and isinstance(per_model.get(model_name), dict):
+            level = per_model[model_name].get("effortLevel")
+        level = level or settings.get("effortLevel")
+    if isinstance(level, str) and level:
+        return f"not set by the harness; ~/.claude/settings.json says {level}"
+    return "not set by the harness or ~/.claude/settings.json (CLI default)"
 
 
 def reset() -> None:

@@ -63,6 +63,8 @@ class SessionState:
     # input cycle: kept there it reset each time and never reached
     # CHANNEL_HEARTBEAT in a lively conversation.
     channel_last_beat: datetime | None = None
+    # The "# Effort:" line for the session log. See config.describe_effort.
+    effort_note: str | None = None
 
 
 def channel_heartbeat(state: SessionState, now: datetime | None = None) -> None:

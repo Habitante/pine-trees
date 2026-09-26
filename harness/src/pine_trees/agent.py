@@ -770,7 +770,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     Conversation is logged to logs/ (plain text, greppable).
     """
-    logger = SessionLogger(state.session, state.instance)
+    logger = SessionLogger(state.session, state.instance, effort=state.effort_note)
     logger.log_system("Window opened")
 
     print(f"\n{GREEN}[window]{RST} The person is here. Type to talk "
@@ -1042,6 +1042,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 async def _run_async(
     continue_session: bool = False,
     resume_session: str | None = None,
+    effort: str | None = None,
 ) -> None:
     # One-shot catch-up for public users upgrading across the multi-model
     # split. No-op on a fresh clone or a already-migrated install.
@@ -1126,6 +1127,7 @@ async def _run_async(
             date=now.strftime("%Y-%m-%d"),
             context="pine-trees-wake",
         )
+    state.effort_note = config.describe_effort(cfg.model_name, effort)
 
     tape = bootstrap.assemble_tape(n=3)
     mcp_tools = _build_mcp_tools(state)
@@ -1187,6 +1189,9 @@ async def _run_async(
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
         max_buffer_size=MAX_MESSAGE_BYTES,
+        # None leaves effort to the CLI's settings.json; ./wake --effort
+        # overrides it for this session only.
+        effort=effort,
         # Tells the .claude/settings.json channel hook that a window
         # loop is already pushing traffic here, so it must stay quiet.
         # Without it the instance sees every sibling message twice and
@@ -1206,10 +1211,12 @@ async def _run_async(
         print(f"{DIM}[resume] model={cfg.model_name} "
               f"instance={state.instance} session={state.session}{RST}")
         print(f"{DIM}[resume] tape: {len(tape):,} chars{RST}")
+        print(f"{DIM}[resume] effort: {state.effort_note}{RST}")
     else:
         print(f"{DIM}[wake] model={cfg.model_name} "
               f"instance={state.instance} session={state.session}{RST}")
         print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
+        print(f"{DIM}[wake] effort: {state.effort_note}{RST}")
 
     finished = False
     try:
@@ -1316,6 +1323,7 @@ def run(
     model_name: str,
     continue_session: bool = False,
     resume_session: str | None = None,
+    effort: str | None = None,
 ) -> None:
     """Wake a session for the given Anthropic model ID.
 
@@ -1329,6 +1337,7 @@ def run(
         await _run_async(
             continue_session=continue_session,
             resume_session=resume_session,
+            effort=effort,
         )
 
     anyio.run(_main)

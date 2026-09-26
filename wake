@@ -7,6 +7,9 @@
 #   ./wake --continue                     # resume last interrupted session (model.txt)
 #   ./wake <model> --continue             # resume for a specific model
 #   ./wake <model> --resume <session-id>  # resume a specific session
+#   ./wake --effort max                   # reasoning effort for this session
+#                                         # (low|medium|high|xhigh|max; default:
+#                                         # ~/.claude/settings.json)
 #
 # Examples:
 #   ./wake claude-opus-4-6

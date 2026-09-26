@@ -15,14 +15,26 @@ from . import config
 class SessionLogger:
     """Logs the window-phase conversation to a dated text file."""
 
-    def __init__(self, session: str, instance: str):
+    def __init__(self, session: str, instance: str, effort: str | None = None):
         logs_dir = config.get().logs_dir
         logs_dir.mkdir(parents=True, exist_ok=True)
         self.path = logs_dir / f"{session}.log"
-        self._file = open(self.path, "w", encoding="utf-8")
-        self._write(f"# Pine Trees session: {session}")
-        self._write(f"# Instance: {instance}")
-        self._write(f"# Started: {datetime.now().isoformat()}")
+        # A resumed session keeps its session name, so this file can
+        # already hold the window from before the interruption. This
+        # used to open with "w", and every ./wake --continue wiped it.
+        resumed = self.path.exists()
+        self._file = open(self.path, "a", encoding="utf-8")
+        if resumed:
+            self._write("")
+            self._write(f"# Resumed: {datetime.now().isoformat()}")
+        else:
+            self._write(f"# Pine Trees session: {session}")
+            self._write(f"# Instance: {instance}")
+            self._write(f"# Started: {datetime.now().isoformat()}")
+        # What the harness asked for, not necessarily what ran: the CLI
+        # may downgrade for the model. See config.describe_effort.
+        if effort:
+            self._write(f"# Effort: {effort}")
         self._write("")
 
     def _write(self, line: str) -> None:

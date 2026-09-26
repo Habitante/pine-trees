@@ -18,6 +18,8 @@ import json
 import sys
 import threading
 
+from .config import EFFORT_LEVELS
+
 
 def _hook_session_id(timeout: float = 2.0) -> str | None:
     """The CLI's session id, read off the hook's stdin payload.
@@ -77,6 +79,11 @@ def main() -> None:
         metavar="SESSION_ID",
         help="Resume a specific session by ID (e.g. 2026-04-21-0611)",
     )
+    wake.add_argument(
+        "--effort", choices=EFFORT_LEVELS, default=None,
+        help="Reasoning effort for this session. Omit to use the CLI's own "
+             "settings (~/.claude/settings.json). Recorded in the session log.",
+    )
 
     genesis = subparsers.add_parser(
         "genesis", help="Seed a fresh model's memory — private time only, no window"
@@ -128,6 +135,7 @@ def main() -> None:
             args.model,
             continue_session=args.continue_session,
             resume_session=args.resume_session,
+            effort=args.effort,
         )
     elif args.command == "genesis":
         from .agent import run_genesis
