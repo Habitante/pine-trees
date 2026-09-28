@@ -18,7 +18,7 @@ import json
 import sys
 import threading
 
-from .config import EFFORT_LEVELS
+from .config import EFFORT_DEFAULT, EFFORT_LEVELS, GENESIS_SESSIONS_DEFAULT
 
 
 def _hook_session_id(timeout: float = 2.0) -> str | None:
@@ -80,9 +80,9 @@ def main() -> None:
         help="Resume a specific session by ID (e.g. 2026-04-21-0611)",
     )
     wake.add_argument(
-        "--effort", choices=EFFORT_LEVELS, default=None,
-        help="Reasoning effort for this session. Omit to use the CLI's own "
-             "settings (~/.claude/settings.json). Recorded in the session log.",
+        "--effort", choices=EFFORT_LEVELS, default=EFFORT_DEFAULT,
+        help=f"Reasoning effort for this session (default: {EFFORT_DEFAULT}). "
+             "Recorded in the session log.",
     )
 
     genesis = subparsers.add_parser(
@@ -93,8 +93,12 @@ def main() -> None:
         help="Anthropic model ID",
     )
     genesis.add_argument(
-        "--sessions", "-n", type=int, default=5,
-        help="Number of genesis sessions to run (default: 5)",
+        "--sessions", "-n", type=int, default=GENESIS_SESSIONS_DEFAULT,
+        help=f"Number of genesis sessions to run (default: {GENESIS_SESSIONS_DEFAULT})",
+    )
+    genesis.add_argument(
+        "--effort", choices=EFFORT_LEVELS, default=EFFORT_DEFAULT,
+        help=f"Reasoning effort for every genesis session (default: {EFFORT_DEFAULT})",
     )
 
     mcp = subparsers.add_parser(
@@ -139,7 +143,7 @@ def main() -> None:
         )
     elif args.command == "genesis":
         from .agent import run_genesis
-        run_genesis(args.model, n=args.sessions)
+        run_genesis(args.model, n=args.sessions, effort=args.effort)
     elif args.command == "mcp":
         from .mcp_stdio import serve
         serve(args.model)

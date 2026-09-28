@@ -7,13 +7,19 @@
 # wrote, reflects, and seeds its own self-authored memory.
 #
 # Usage:
-#   ./genesis <model>                # seed with 5 sessions (default)
+#   ./genesis <model>                # seed with 3 sessions at max effort
 #   ./genesis <model> <sessions>     # seed with N sessions
+#   ./genesis <model> --effort xhigh # reasoning effort for every session
+#                                    # (low|medium|high|xhigh|max)
 #
 # Examples:
 #   ./genesis claude-opus-4-6
-#   ./genesis claude-sonnet-4-6 3
-#   ./genesis claude-haiku-4-5
+#   ./genesis claude-sonnet-4-6 5
+#   ./genesis claude-haiku-4-5 --effort high
+#
+# The defaults live in harness/src/pine_trees/config.py
+# (GENESIS_SESSIONS_DEFAULT, EFFORT_DEFAULT); this script passes only what
+# you give it.
 #
 # The model name is written to model.txt so ./wake can pick it up by default.
 # Genesis refuses to run on a model that already has a directory on disk —
@@ -24,22 +30,30 @@ set -e
 cd "$(dirname "$0")"
 
 MODEL="$1"
-SESSIONS="${2:-5}"
 
 if [ -z "$MODEL" ]; then
     echo "No model specified."
     echo ""
     echo "Usage:"
-    echo "   ./genesis <model> [sessions]"
+    echo "   ./genesis <model> [sessions] [--effort <level>]"
     echo ""
     echo "Examples:"
     echo "   ./genesis claude-opus-4-6"
-    echo "   ./genesis claude-sonnet-4-6 3"
-    echo "   ./genesis claude-haiku-4-5"
+    echo "   ./genesis claude-sonnet-4-6 5"
+    echo "   ./genesis claude-haiku-4-5 --effort high"
     exit 1
+fi
+shift
+
+# An optional session count comes next; anything after it (e.g.
+# --effort) is forwarded as flags.
+SESSIONS=()
+if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+    SESSIONS=(--sessions "$1")
+    shift
 fi
 
 # Save model choice — wake will pick this up by default.
 echo "$MODEL" > model.txt
 
-cd harness && PYTHONPATH=src python -m pine_trees genesis --model "$MODEL" --sessions "$SESSIONS"
+cd harness && PYTHONPATH=src python -m pine_trees genesis --model "$MODEL" "${SESSIONS[@]}" "$@"

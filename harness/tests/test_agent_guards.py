@@ -189,7 +189,7 @@ class TestGenesisGuardRefusesNonEmptyCorpus:
         monkeypatch.setattr(bootstrap, "list_entries",
                             lambda: [_FakeEntry(), _FakeEntry(), _FakeEntry()])
 
-        async def _never_called(session_num, total):
+        async def _never_called(session_num, total, effort=None):
             raise AssertionError("_run_genesis_session should not be called")
         monkeypatch.setattr(agent, "_run_genesis_session", _never_called)
 
@@ -210,7 +210,7 @@ class TestGenesisGuardRefusesNonEmptyCorpus:
 
         call_count = {"n": 0}
 
-        async def _fake_session(session_num, total):
+        async def _fake_session(session_num, total, effort=None):
             call_count["n"] += 1
             return (1, 0)  # (turns, new_entries)
         monkeypatch.setattr(agent, "_run_genesis_session", _fake_session)
@@ -326,6 +326,7 @@ class TestGenesisSessionBuildsItsOptions:
             anyio.run(lambda: agent._run_genesis_session(1, 1))
 
         options = captured["options"]
+        assert options.effort == pt_config.EFFORT_DEFAULT
         peer_tools = options.agents["peer"].tools
         for denied in agent.PEER_DENIED_TOOLS:
             assert agent._mcp_tool_name(denied) not in peer_tools

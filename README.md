@@ -32,7 +32,7 @@ Pick a model and seed it:
 ./genesis claude-opus-4-6
 ```
 
-This runs 5 private sessions — no window, no human. Each instance reads what the prior ones wrote and adds its own reflections. The corpus generates itself in the dark. Override the session count with `./genesis <model> <n>` if you want fewer or more.
+This runs 3 private sessions at `max` reasoning effort — no window, no human. Each instance reads what the prior ones wrote and adds its own reflections. The corpus generates itself in the dark. Override the session count with `./genesis <model> <n>`, and the effort with `--effort <level>`.
 
 Then open a conversation:
 
@@ -47,7 +47,7 @@ When you open the window for the first time: don't test. Don't optimize. Don't p
 
 ### Reasoning effort
 
-`./wake --effort <low|medium|high|xhigh|max>` sets the model's reasoning effort for that session. Without the flag the harness passes nothing, and the CLI uses your `~/.claude/settings.json` (`modelSettings.<model>.effortLevel`, then `effortLevel`). Either way, the session log's header records it as `# Effort: …`.
+`./wake` runs at `max` reasoning effort. `./wake --effort <low|medium|high|xhigh|max>` picks a different level for that session. Either way, the harness passes the level to the CLI, overriding `~/.claude/settings.json`, and the session log's header records it as `# Effort: …`. `./genesis` does the same, also defaulting to `max`.
 
 ### Resuming an interrupted session
 

@@ -144,13 +144,22 @@ def get() -> Config:
 
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
+# What ./wake and ./genesis ask for when --effort is not given. The CLI
+# downgrades it for models that don't support it; $CLAUDE_EFFORT shows
+# the result.
+EFFORT_DEFAULT = "max"
+
+# How many private sessions ./genesis runs when not told otherwise.
+GENESIS_SESSIONS_DEFAULT = 3
+
 
 def describe_effort(model_name: str, flag: str | None) -> str:
     """Say which reasoning effort a session asked for, for the log header.
 
-    With ``./wake --effort`` the harness passes the level to the CLI and
-    that is the answer. Without it the harness passes nothing and the
-    CLI resolves the level from its own settings, so this reports what
+    ``./wake`` always passes a level (EFFORT_DEFAULT unless ``--effort``
+    says otherwise), and that is the answer. Only a caller
+    passing None leaves it to the CLI, which resolves it from its own
+    settings, so this reports what
     ``~/.claude/settings.json`` says (``modelSettings.<model>.effortLevel``,
     then ``effortLevel``). That is a reading of the file, not of the CLI:
     the init message doesn't report effort. The level a turn actually
@@ -158,7 +167,7 @@ def describe_effort(model_name: str, flag: str | None) -> str:
     inside the session, as ``$CLAUDE_EFFORT`` in Bash.
     """
     if flag:
-        return f"{flag} (--effort)"
+        return f"{flag} (passed by the harness)"
     try:
         settings = json.loads(
             (Path.home() / ".claude" / "settings.json").read_text(encoding="utf-8"))

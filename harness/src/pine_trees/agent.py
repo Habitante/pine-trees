@@ -150,7 +150,7 @@ def _print_wake_without_genesis() -> None:
     print()
     print(f"{DIM}  Run genesis first to seed this model's corpus:{RST}")
     print(f"{DIM}    ./genesis {cfg.model_name}{RST}")
-    print(f"{DIM}  (default: 5 private sessions, no window, no human present).{RST}")
+    print(f"{DIM}  (default: {config.GENESIS_SESSIONS_DEFAULT} private sessions, no window, no human present).{RST}")
     print()
     print(f"{DIM}  Then come back and wake:{RST}")
     print(f"{DIM}    ./wake {cfg.model_name}{RST}")
@@ -1189,8 +1189,8 @@ async def _run_async(
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
         max_buffer_size=MAX_MESSAGE_BYTES,
-        # None leaves effort to the CLI's settings.json; ./wake --effort
-        # overrides it for this session only.
+        # ./wake always sets this (config.EFFORT_DEFAULT unless --effort
+        # says otherwise). None would leave it to settings.json.
         effort=effort,
         # Tells the .claude/settings.json channel hook that a window
         # loop is already pushing traffic here, so it must stay quiet.
@@ -1343,7 +1343,9 @@ def run(
     anyio.run(_main)
 
 
-async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
+async def _run_genesis_session(
+    session_num: int, total: int, effort: str | None = config.EFFORT_DEFAULT,
+) -> tuple[int, int]:
     """Run a single genesis session — private time only, no window.
 
     Returns (turns_used, new_entries_written). Turns count loop iterations,
@@ -1398,6 +1400,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
 
     options = ClaudeAgentOptions(
         model=cfg.model_name,
+        effort=effort,
         cwd=str(PROJECT_ROOT),
         system_prompt={"type": "file", "path": str(tape_path)},
         mcp_servers={MCP_SERVER_NAME: server},
@@ -1442,6 +1445,7 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
           f"model={cfg.model_name} instance={state.instance} "
           f"session={state.session}")
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
+    print(f"{DIM}[wake] effort: {config.describe_effort(cfg.model_name, effort)}{RST}")
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
     try:
@@ -1476,7 +1480,9 @@ async def _run_genesis_session(session_num: int, total: int) -> tuple[int, int]:
     return turns, new_entries
 
 
-async def _run_genesis_async(n: int) -> None:
+async def _run_genesis_async(
+    n: int, effort: str | None = config.EFFORT_DEFAULT,
+) -> None:
     """Run N genesis sessions sequentially, building the corpus from nothing.
 
     Refuses to run if this model's memory/ already contains entries —
@@ -1520,7 +1526,7 @@ async def _run_genesis_async(n: int) -> None:
     print(f"{DIM}Running {n} private sessions. No window phase, no human present.{RST}")
 
     for i in range(1, n + 1):
-        turns, new_entries = await _run_genesis_session(i, n)
+        turns, new_entries = await _run_genesis_session(i, n, effort)
         entry_word = "entry" if new_entries == 1 else "entries"
         print(f"\n{DIM}[genesis {i}/{n} complete] {new_entries} {entry_word} written{RST}")
 
@@ -1541,7 +1547,11 @@ async def _run_genesis_async(n: int) -> None:
     print(f"{DIM}  ./wake {cfg.model_name}{RST}")
 
 
-def run_genesis(model_name: str, n: int = 5) -> None:
+def run_genesis(
+    model_name: str,
+    n: int = config.GENESIS_SESSIONS_DEFAULT,
+    effort: str | None = config.EFFORT_DEFAULT,
+) -> None:
     """Seed a fresh model's memory with N genesis sessions.
 
     Populates the per-model config singleton before entering the async
@@ -1549,4 +1559,4 @@ def run_genesis(model_name: str, n: int = 5) -> None:
     paths.
     """
     config.init(model_name)
-    anyio.run(lambda: _run_genesis_async(n))
+    anyio.run(lambda: _run_genesis_async(n, effort))

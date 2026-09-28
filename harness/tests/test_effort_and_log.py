@@ -63,7 +63,7 @@ def _settings(home, data):
 
 def test_flag_wins(home):
     _settings(home, {"effortLevel": "low"})
-    assert config.describe_effort("claude-x", "max") == "max (--effort)"
+    assert config.describe_effort("claude-x", "max") == "max (passed by the harness)"
 
 
 def test_per_model_setting(home):
@@ -92,7 +92,7 @@ def test_missing_or_odd_settings_fall_back_to_cli_default(home, raw):
 
 @pytest.mark.parametrize("argv, expected", [
     (["wake", "--model", "claude-x", "--effort", "max"], "max"),
-    (["wake", "--model", "claude-x"], None),
+    (["wake", "--model", "claude-x"], "max"),  # the default
 ])
 def test_wake_forwards_effort(monkeypatch, argv, expected):
     from pine_trees import __main__ as cli, agent
@@ -102,6 +102,24 @@ def test_wake_forwards_effort(monkeypatch, argv, expected):
     monkeypatch.setattr(sys, "argv", ["pine-trees", *argv])
     cli.main()
     assert seen["effort"] == expected
+
+
+# --- ./genesis defaults reach run_genesis() ---
+
+
+@pytest.mark.parametrize("argv, expected", [
+    (["genesis", "--model", "claude-x"], {"n": 3, "effort": "max"}),
+    (["genesis", "--model", "claude-x", "--sessions", "5", "--effort", "xhigh"],
+     {"n": 5, "effort": "xhigh"}),
+])
+def test_genesis_forwards_sessions_and_effort(monkeypatch, argv, expected):
+    from pine_trees import __main__ as cli, agent
+
+    seen = {}
+    monkeypatch.setattr(agent, "run_genesis", lambda model, **kw: seen.update(kw))
+    monkeypatch.setattr(sys, "argv", ["pine-trees", *argv])
+    cli.main()
+    assert seen == expected
 
 
 def test_wake_rejects_unknown_effort(monkeypatch):
