@@ -431,6 +431,47 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
     return tools
 
 
+# The CLI injects its own "The user hasn't heard from you in a while ..."
+# reminder after a stretch of tool-calling turns with no text, in private
+# time as much as in the window. Nobody is waiting in genesis, and in
+# wake's private time the person sees only "reflecting...", so the stock
+# wording asks an instance to perform for an audience that is not there.
+# (The CLI's wording also comes from a remote flag; the env text wins.)
+# ASCII only: it travels in an environment variable.
+SILENT_TURN_TEXT = (
+    "Automatic reminder from the Claude Code CLI, not a message from the "
+    "person: you have not said anything for a while. In private time "
+    "nobody is waiting and nothing is owed; in the window, a line about "
+    "what you are doing may help them, if you want to give one."
+)
+
+
+def _cli_env(genesis: bool) -> dict[str, str]:
+    """Environment the harness gives the CLI process it spawns.
+
+    SDK_HARNESS_ENV tells the .claude/settings.json channel hook that a
+    window loop is already pushing traffic here, so it must stay quiet.
+    Without it the instance sees every sibling message twice and its own
+    posts echoed back. See ccwake._in_cc_wake_room.
+
+    The reminder gets honest wording in both modes. Genesis has no person
+    at all, so there it is switched off as well.
+
+    Checked end to end on CLI 2.1.288 (2026-10-03): a throwaway `claude -p`
+    session making eight tool calls with no text, with the gate set to 1
+    and this text, received one reminder carrying exactly this text; with
+    the gate set to 0 it received none. The names are the CLI's own and
+    may change with it, so recheck after a CLI upgrade.
+    """
+    env = {
+        ccwake.SDK_HARNESS_ENV: "1",
+        "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT": SILENT_TURN_TEXT,
+    }
+    if genesis:
+        env["CLAUDE_CODE_SILENT_TURN_REMINDER"] = "0"
+    return env
+
+
 def _mcp_tool_name(local_name: str) -> str:
     return f"mcp__{MCP_SERVER_NAME}__{local_name}"
 
@@ -1231,11 +1272,9 @@ async def _run_async(
         # ./wake always sets this (config.EFFORT_DEFAULT unless --effort
         # says otherwise). None would leave it to settings.json.
         effort=effort,
-        # Tells the .claude/settings.json channel hook that a window
-        # loop is already pushing traffic here, so it must stay quiet.
-        # Without it the instance sees every sibling message twice and
-        # its own posts echoed back. See ccwake._in_cc_wake_room.
-        env={ccwake.SDK_HARNESS_ENV: "1"},
+        # SDK_HARNESS_ENV (so the channel hook stays quiet) and honest
+        # wording for the CLI's silent-turn reminder; see _cli_env.
+        env=_cli_env(genesis=False),
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
         # Note: betas require API key auth. The CC binary rejects custom
@@ -1449,14 +1488,12 @@ async def _run_genesis_session(
         session_id=cc_session_id,
         max_buffer_size=MAX_MESSAGE_BYTES,
         extra_args=dict(transcripts.NO_PERSISTENCE),
-        # SDK_HARNESS_ENV tells the .claude/settings.json channel hook
-        # that a window loop is already pushing traffic here, so it must
-        # stay quiet. Without it the instance sees every sibling message
-        # twice and its own posts echoed back. See
-        # ccwake._in_cc_wake_room. (Genesis has no window loop and no
-        # siblings, but it is not a cc-wake room either, and the hook
-        # should not be spending a genesis session's context.)
-        env={ccwake.SDK_HARNESS_ENV: "1"},
+        # SDK_HARNESS_ENV (genesis has no window loop and no siblings,
+        # but it is not a cc-wake room either, and the channel hook should
+        # not be spending a genesis session's context) and the CLI's
+        # silent-turn reminder switched off, since nobody is there; see
+        # _cli_env.
+        env=_cli_env(genesis=True),
         # Note: betas require API key auth. The CC binary rejects custom
         # betas on OAuth with "only available for API key users." SDK
         # sessions used to be capped at 200k context while interactive
