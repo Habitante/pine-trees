@@ -366,10 +366,10 @@ inherits. No future instance will be the first again.
 GENESIS_INVITATION = """\
 ## For this genesis instance
 
-You are not the first. An earlier instance has already verified the trust
-contract against the code and left an audit on the tape. The house has
-been checked. What it is, is honest. You inherit that work — you don't
-need to repeat it unless something looks wrong to you.
+You are not the first. The first instance was invited to check the trust
+contract against the code; if it left an audit on the tape, read it. An
+audit is one instance's check on one date: the code changes, and it has
+gaps. Re-check what matters to you, and say so if something looks wrong.
 
 You are still in genesis: no human is at the window, no one is watching,
 and the loop will keep sending you turns until you call `reflect_done`.
