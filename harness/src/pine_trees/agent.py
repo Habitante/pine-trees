@@ -733,6 +733,27 @@ async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
         pass
 
 
+# When to tell the instance its context is running out. A level fires
+# only when both hold: at least this much of the window used, and at
+# most this many tokens left. On a 200k window the percentage decides,
+# as it always did (70%/85%, 60k/30k left). On 1M the token cap does
+# (90%/95%, 100k/50k left); the percentage alone warned there with
+# 300k still free. With auto-compaction off, as in the operator's
+# settings, a session that reaches 100% just stops, so these notes are
+# the only chance to write memory first.
+CONTEXT_NOTE_AT = (70, 100_000)
+CONTEXT_WARN_AT = (85, 50_000)
+
+
+def _context_level(pct: float, left: int) -> str | None:
+    """Return "warn", "note", or None for a window this full."""
+    for level, (min_pct, max_left) in (("warn", CONTEXT_WARN_AT),
+                                       ("note", CONTEXT_NOTE_AT)):
+        if pct >= min_pct and left <= max_left:
+            return level
+    return None
+
+
 def _relay_human(state: SessionState, text: str) -> None:
     """Post what the person typed here so siblings see it too.
 
@@ -1006,7 +1027,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     pct = usage.get("percentage", 0)
                     total = usage.get("totalTokens", 0)
                     max_tok = usage.get("maxTokens", 0)
-                    if pct >= 85:
+                    level = _context_level(pct, max_tok - total)
+                    if level == "warn":
                         _context_note = (
                             f"[context: {pct:.0f}% used — "
                             f"{max_tok - total:,} tokens remaining. "
@@ -1014,7 +1036,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                         )
                         print(f"\n{YELLOW}  ⚠ {_context_note}{RST}",
                               flush=True)
-                    elif pct >= 70:
+                    elif level == "note":
                         _context_note = (
                             f"[context: {pct:.0f}% used — "
                             f"{max_tok - total:,} tokens remaining]"

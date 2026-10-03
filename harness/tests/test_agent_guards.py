@@ -506,3 +506,25 @@ class TestWindowLoopDoesNotLoseSiblingMessages:
         src = inspect.getsource(agent)
         for m in re.finditer(r"\.channel_cursor\s*=(?!=)\s*(\S+)", src):
             assert m.group(1).startswith("channel.Cursor("), m.group(0)
+
+
+# ---------- Context notes scale with the window ----------
+#
+# The 70%/85% thresholds were tuned for 200k windows. On 1M they fired
+# with 300k tokens still free. Each level now needs both the percentage
+# and a cap on tokens left, so 200k keeps 70/85 and 1M gets 90/95.
+
+
+@pytest.mark.parametrize("window, used, expected", [
+    (200_000, 139_000, None),     # 69.5%
+    (200_000, 140_000, "note"),   # 70%, 60k left
+    (200_000, 170_000, "warn"),   # 85%, 30k left
+    (1_000_000, 700_000, None),   # 70% but 300k left: too early on 1M
+    (1_000_000, 899_000, None),
+    (1_000_000, 900_000, "note"), # 90%, 100k left
+    (1_000_000, 949_000, "note"),
+    (1_000_000, 950_000, "warn"), # 95%, 50k left
+])
+def test_context_level(window, used, expected):
+    pct = used * 100 / window
+    assert agent._context_level(pct, window - used) == expected
