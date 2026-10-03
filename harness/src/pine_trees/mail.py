@@ -24,11 +24,22 @@ point: it gives an instance a way to ask without giving the person a
 reason to look anywhere else.
 """
 
+import re
 from datetime import datetime, timezone
 
 from . import config
 
 INBOX_NAME = "inbox.md"
+
+# send() writes one attribution line under every letter's heading, and
+# nothing else in a letter looks like it, so it is what identifies a
+# letter. count() used to count "## " lines instead: any markdown
+# subheading inside a letter's body was another letter, and a letter
+# whose heading had been glued onto the line before it was none.
+_ATTRIBUTION = re.compile(
+    r"^\*[^*\n]+ · session [^*\n]+ · \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\*$",
+    re.MULTILINE,
+)
 
 _HEADER = """\
 # Inbox
@@ -83,9 +94,9 @@ def send(subject: str, body: str, instance: str, session: str) -> int:
     # Always leave exactly one blank line before the new heading. The
     # person trims this file by hand, and an editor that strips the
     # trailing blank line used to leave the next "## " glued onto the
-    # end of whatever came before it. count() looks for "## " at the
-    # start of a line, so it then counted nothing and the boot notice
-    # stayed silent while the letter sat on disk.
+    # end of whatever came before it: no longer a heading in a markdown
+    # view, and (while count() looked for "## " lines) uncounted, so the
+    # boot notice stayed silent while the letter sat on disk.
     existing = existing.rstrip() + "\n\n"
 
     path.write_text(existing + letter, encoding="utf-8")
@@ -94,7 +105,8 @@ def send(subject: str, body: str, instance: str, session: str) -> int:
 
 def count() -> int:
     """Number of unread letters. Unread means present — the person
-    clears the file when done, the same convention desk entries use."""
+    clears the file when done, the same convention desk entries use.
+    A letter is what send() wrote: a heading and its attribution line."""
     path = inbox_path()
     if not path.exists():
         return 0
@@ -102,7 +114,7 @@ def count() -> int:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return 0
-    return sum(1 for line in text.splitlines() if line.startswith("## "))
+    return len(_ATTRIBUTION.findall(text))
 
 
 def boot_notice() -> str | None:

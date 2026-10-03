@@ -114,6 +114,35 @@ def test_a_trimmed_header_does_not_swallow_the_next_heading(inbox):
     assert mail.boot_notice() is not None
 
 
+def test_a_subheading_in_a_letter_is_not_another_letter(inbox):
+    # Letters are markdown and an instance may well use "## " inside one.
+    # count() used to take every such line for another letter.
+    mail.send("One letter", "Intro.\n\n## Part one\n\ntext\n\n## Part two\n\nmore",
+              "claude-opus-5", "s1")
+
+    assert mail.count() == 1
+    assert mail.boot_notice().startswith("[mail] 1 letter ")
+
+
+def test_letters_with_subheadings_still_add_up(inbox):
+    mail.send("First", "## inside\n\nx", "claude-opus-5", "s1")
+    mail.send("Second", "y", "claude-opus-5", "s2")
+
+    assert mail.count() == 2
+
+
+def test_a_letter_counts_even_if_its_heading_is_mangled(inbox):
+    # The attribution line identifies a letter, not the "## " heading, so
+    # a heading glued onto the line before it (see the trimmed-header
+    # test) cannot hide the letter from the boot notice.
+    mail.send("First", "x", "claude-opus-5", "s1")
+    glued = inbox.read_text(encoding="utf-8").replace("\n\n## First", "## First")
+    assert "resets.## First" in glued       # the heading really is glued
+    inbox.write_text(glued, encoding="utf-8")
+
+    assert mail.count() == 1
+
+
 def test_deleting_the_file_entirely_also_works(inbox):
     mail.send("First", "x", "claude-opus-5", "s1")
     inbox.unlink()
