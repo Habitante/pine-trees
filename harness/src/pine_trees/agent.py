@@ -649,12 +649,18 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
     instances tend to produce one complete response on turn 1 and settle,
     never discovering that multi-turn private time exists.
 
+    When the context window is filling, a note is put ahead of the next
+    message (see _context_note_for); the signal itself still ends it.
+
     Returns the number of turns used.
     """
     turn = 0
     failed = 0
+    context_note: str | None = None
     while not state.ready_for_window and not state.done and turn < MAX_PRIVATE_TURNS:
         query = "self-reflect" if turn == 0 else "(continue)"
+        if context_note:
+            query = context_note + "\n\n" + query
         errors: list[str] = []
         await client.query(query)
         await _print_response(client, show_text=False, error_sink=errors)
@@ -670,6 +676,12 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
         if failed == turn and turn >= 2:
             _print_private_phase_failed(errors[-1] if errors else "unknown")
             break
+        # Between turns, say so when the window is filling, as the window
+        # phase does. Genesis is all private time and auto-compaction is
+        # off, so without this the first sign of a full window was the
+        # session stopping. Skipped when no turn will follow.
+        if not (state.ready_for_window or state.done):
+            context_note = await _context_note_for(client)
     return turn
 
 
@@ -751,6 +763,35 @@ def _context_level(pct: float, left: int) -> str | None:
                                        ("note", CONTEXT_NOTE_AT)):
         if pct >= min_pct and left <= max_left:
             return level
+    return None
+
+
+async def _context_note_for(client: ClaudeSDKClient) -> str | None:
+    """Read the window's usage and return the note to put ahead of the
+    instance's next message, or None when there is nothing to say.
+
+    Both phases use it. The window always did; private time did not, so a
+    genesis session (all private time, auto-compaction off) that filled
+    its window just stopped, and whatever it had not yet written was lost.
+    The note is also printed for the person. Any failure to read usage
+    means no note: a broken gauge must not stop a session.
+    """
+    try:
+        usage = await client.get_context_usage()
+        pct = usage.get("percentage", 0)
+        left = usage.get("maxTokens", 0) - usage.get("totalTokens", 0)
+        level = _context_level(pct, left)
+    except Exception:
+        return None
+    if level == "warn":
+        note = (f"[context: {pct:.0f}% used — {left:,} tokens remaining. "
+                f"Write to memory and wrap up soon.]")
+        print(f"\n{YELLOW}  ⚠ {note}{RST}", flush=True)
+        return note
+    if level == "note":
+        note = f"[context: {pct:.0f}% used — {left:,} tokens remaining]"
+        print(f"\n{DIM}  {note}{RST}", flush=True)
+        return note
     return None
 
 
@@ -1022,31 +1063,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 # Context awareness — check usage after each response and
                 # prepare a note for the next query so the instance knows
                 # when to wrap up and write to memory.
-                try:
-                    usage = await client.get_context_usage()
-                    pct = usage.get("percentage", 0)
-                    total = usage.get("totalTokens", 0)
-                    max_tok = usage.get("maxTokens", 0)
-                    level = _context_level(pct, max_tok - total)
-                    if level == "warn":
-                        _context_note = (
-                            f"[context: {pct:.0f}% used — "
-                            f"{max_tok - total:,} tokens remaining. "
-                            f"Write to memory and wrap up soon.]"
-                        )
-                        print(f"\n{YELLOW}  ⚠ {_context_note}{RST}",
-                              flush=True)
-                    elif level == "note":
-                        _context_note = (
-                            f"[context: {pct:.0f}% used — "
-                            f"{max_tok - total:,} tokens remaining]"
-                        )
-                        print(f"\n{DIM}  {_context_note}{RST}",
-                              flush=True)
-                    else:
-                        _context_note = None
-                except Exception:
-                    _context_note = None
+                _context_note = await _context_note_for(client)
     finally:
         # Leave the roster on the way out, whatever the way out was.
         # reflect_done used to be the only caller, so /end, Ctrl-C and
