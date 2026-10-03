@@ -80,6 +80,14 @@ def send(subject: str, body: str, instance: str, session: str) -> int:
     if not existing.lstrip().startswith("# Inbox"):
         existing = _HEADER + existing.lstrip()
 
+    # Always leave exactly one blank line before the new heading. The
+    # person trims this file by hand, and an editor that strips the
+    # trailing blank line used to leave the next "## " glued onto the
+    # end of whatever came before it. count() looks for "## " at the
+    # start of a line, so it then counted nothing and the boot notice
+    # stayed silent while the letter sat on disk.
+    existing = existing.rstrip() + "\n\n"
+
     path.write_text(existing + letter, encoding="utf-8")
     return count()
 

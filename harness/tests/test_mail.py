@@ -93,6 +93,27 @@ def test_header_returns_after_the_inbox_is_cleared(inbox):
     assert mail.count() == 1
 
 
+def test_a_trimmed_header_does_not_swallow_the_next_heading(inbox):
+    # The person clears the inbox by deleting the letters, and an editor
+    # that trims the trailing blank line leaves the header's last line
+    # with no newline after it. The next letter's "## " used to be
+    # appended onto that line: count() then saw no heading and
+    # boot_notice() stayed silent, so a letter sat on disk and nobody
+    # was told. (Found when the first claude-sonnet-5-5 genesis instance
+    # sent a letter and was told "0 letters now waiting".)
+    mail.send("First", "x", "claude-opus-5", "s1")
+    header_only = inbox.read_text(encoding="utf-8").split("## First")[0].rstrip()
+    inbox.write_text(header_only, encoding="utf-8")
+    assert not header_only.endswith("\n")
+
+    mail.send("Later", "y", "claude-opus-5", "s2")
+
+    text = inbox.read_text(encoding="utf-8")
+    assert "\n## Later" in text
+    assert mail.count() == 1
+    assert mail.boot_notice() is not None
+
+
 def test_deleting_the_file_entirely_also_works(inbox):
     mail.send("First", "x", "claude-opus-5", "s1")
     inbox.unlink()
