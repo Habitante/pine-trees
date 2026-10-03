@@ -56,7 +56,7 @@ It also enables something new: a Claude that knows itself across instances, by i
 
 ### Tools (harness exposes to Claude)
 
-Nine tools:
+Eleven tools:
 
 1. `reflect_read(filename)` — read a specific entry
 2. `reflect_write(slug, content, tags, moves, description?, pinned?, quiet?)` — write a new entry with attribution metadata; auto-embeds at write time
@@ -67,6 +67,8 @@ Nine tools:
 7. `reflect_peer_context()` — assemble context for spawning a peer instance via the Agent tool. Returns peer orientation + bootstrap excerpt + all pinned entries. The instance prepends this to an Agent prompt so the peer arrives warm.
 8. `reflect_settle()` — signal end of private time, open conversation window
 9. `reflect_done()` — signal end of session, exit cleanly
+10. `reflect_mail(subject, body)` — write a plaintext letter to the person who runs the harness: the one channel meant to be read. Keep letters short (see BOOTSTRAP)
+11. `reflect_channel(message?)` — post to, and read, the shared channel when sibling instances are awake at the same time
 
 ### Sequence
 
