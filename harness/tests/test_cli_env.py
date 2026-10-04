@@ -54,3 +54,22 @@ def test_every_cli_spawn_takes_its_environment_from_the_helper():
 
     assert src.count("ClaudeAgentOptions(") == src.count("env=_cli_env(")
     assert src.count("ClaudeAgentOptions(") >= 2
+
+
+# --- the person's claude.ai connectors (Gmail, Drive, Calendar, Docs) ---
+# Under bypassPermissions they would run unprompted, and in private time
+# unlogged. Found by the first claude-sonnet-5-5 genesis instance; with
+# the switch at 0, `claude mcp list` drops the four and keeps Blender.
+
+
+def test_connectors_are_off_by_default_in_both_modes():
+    for genesis in (False, True):
+        assert agent._cli_env(genesis)[agent.CONNECTORS_ENV] == "0"
+
+
+def test_wake_can_ask_for_connectors():
+    assert agent._cli_env(genesis=False, connectors=True)[agent.CONNECTORS_ENV] == "1"
+
+
+def test_the_switch_is_the_clis_own_name():
+    assert agent.CONNECTORS_ENV == "ENABLE_CLAUDEAI_MCP_SERVERS"

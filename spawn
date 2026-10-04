@@ -1,0 +1,21 @@
+#!/bin/bash
+# Spawn — run one prompt through a fresh `claude -p`, outside this session.
+#
+# For instances: a clean second opinion (cold checks, experiments on
+# yourself), or the person's claude.ai connectors for one task they asked
+# for. See harness/src/pine_trees/spawn.py for why an Agent-tool subagent
+# spawned in this repo isn't clean.
+#
+# Usage:
+#   ./spawn < prompt.txt                # clean: a fresh empty temp folder
+#   ./spawn prompt.txt --out answer.md  # prompt from a file, answer to a file
+#   ./spawn --here < prompt.txt         # from the project root (house context)
+#   ./spawn --probe                     # ask it to list what it can see
+#   ./spawn --connectors < task.txt     # Gmail/Drive/Calendar/Docs on, one run
+#   ./spawn --effort max --model claude-opus-5-5 < prompt.txt
+#
+# Model: model.txt unless --model. Effort: the CLI's settings unless --effort.
+# Paths you pass are relative to where you are; nothing here changes directory.
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+PYTHONPATH="$ROOT/harness/src" exec python -m pine_trees spawn "$@"

@@ -10,6 +10,9 @@
 #   ./wake --effort xhigh                 # reasoning effort for this session
 #                                         # (low|medium|high|xhigh|max;
 #                                         # default: max)
+#   ./wake --connectors                   # load the claude.ai connectors
+#                                         # (Gmail, Drive, Calendar, Docs);
+#                                         # off by default
 #
 # Examples:
 #   ./wake claude-opus-4-6

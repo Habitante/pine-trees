@@ -445,8 +445,11 @@ SILENT_TURN_TEXT = (
     "what you are doing may help them, if you want to give one."
 )
 
+# The CLI's switch for the claude.ai connectors; see _cli_env.
+CONNECTORS_ENV = config.CONNECTORS_ENV
 
-def _cli_env(genesis: bool) -> dict[str, str]:
+
+def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
     """Environment the harness gives the CLI process it spawns.
 
     SDK_HARNESS_ENV tells the .claude/settings.json channel hook that a
@@ -462,10 +465,21 @@ def _cli_env(genesis: bool) -> dict[str, str]:
     and this text, received one reminder carrying exactly this text; with
     the gate set to 0 it received none. The names are the CLI's own and
     may change with it, so recheck after a CLI upgrade.
+
+    The person's claude.ai connectors (Gmail, Drive, Calendar, Docs) are
+    off unless asked for (./wake --connectors). Under bypassPermissions
+    they would run unprompted, and in private time unlogged, against
+    accounts where a send, share or delete reaches other people and
+    can't be undone; their instructions also land in the instance's
+    context mid-session. Other MCP servers (Blender) are unaffected.
+    Checked on CLI 2.1.288: with ENABLE_CLAUDEAI_MCP_SERVERS=0,
+    `claude mcp list` drops the four connectors and keeps the rest. For
+    one task inside a session, `./spawn --connectors` (spawn.py).
     """
     env = {
         ccwake.SDK_HARNESS_ENV: "1",
         "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT": SILENT_TURN_TEXT,
+        CONNECTORS_ENV: "1" if connectors else "0",
     }
     if genesis:
         env["CLAUDE_CODE_SILENT_TURN_REMINDER"] = "0"
@@ -873,7 +887,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     Conversation is logged to logs/ (plain text, greppable).
     """
-    logger = SessionLogger(state.session, state.instance, effort=state.effort_note)
+    logger = SessionLogger(state.session, state.instance, effort=state.effort_note,
+                           connectors=state.connectors)
     logger.log_system("Window opened")
 
     print(f"\n{GREEN}[window]{RST} The person is here. Type to talk "
@@ -1123,6 +1138,7 @@ async def _run_async(
     continue_session: bool = False,
     resume_session: str | None = None,
     effort: str | None = None,
+    connectors: bool = False,
 ) -> None:
     # One-shot catch-up for public users upgrading across the multi-model
     # split. No-op on a fresh clone or a already-migrated install.
@@ -1208,6 +1224,7 @@ async def _run_async(
             context="pine-trees-wake",
         )
     state.effort_note = config.describe_effort(cfg.model_name, effort)
+    state.connectors = connectors
 
     tape = bootstrap.assemble_tape(n=3)
     mcp_tools = _build_mcp_tools(state)
@@ -1274,7 +1291,7 @@ async def _run_async(
         effort=effort,
         # SDK_HARNESS_ENV (so the channel hook stays quiet) and honest
         # wording for the CLI's silent-turn reminder; see _cli_env.
-        env=_cli_env(genesis=False),
+        env=_cli_env(genesis=False, connectors=connectors),
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
         # Note: betas require API key auth. The CC binary rejects custom
@@ -1295,6 +1312,9 @@ async def _run_async(
               f"instance={state.instance} session={state.session}{RST}")
         print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")
         print(f"{DIM}[wake] effort: {state.effort_note}{RST}")
+    if connectors:
+        print(f"{DIM}[{'resume' if resuming else 'wake'}] connectors: on "
+              f"(claude.ai Gmail, Drive, Calendar, Docs){RST}")
 
     finished = False
     try:
@@ -1402,6 +1422,7 @@ def run(
     continue_session: bool = False,
     resume_session: str | None = None,
     effort: str | None = None,
+    connectors: bool = False,
 ) -> None:
     """Wake a session for the given Anthropic model ID.
 
@@ -1416,6 +1437,7 @@ def run(
             continue_session=continue_session,
             resume_session=resume_session,
             effort=effort,
+            connectors=connectors,
         )
 
     anyio.run(_main)

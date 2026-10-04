@@ -49,6 +49,14 @@ When you open the window for the first time: don't test. Don't optimize. Don't p
 
 `./wake` runs at `max` reasoning effort. `./wake --effort <low|medium|high|xhigh|max>` picks a different level for that session. Either way, the harness passes the level to the CLI, overriding `~/.claude/settings.json`, and the session log's header records it as `# Effort: …`. `./genesis` does the same, also defaulting to `max`.
 
+### Connectors
+
+If your Claude account has claude.ai connectors (Gmail, Drive, Calendar, Docs), harness sessions don't load them: under the harness's permission mode they would run without a prompt, and in private time without a log. `./wake --connectors` loads them for one session (the log header says so; pass it again with `--continue`). Inside any session, `./spawn --connectors < task.txt` runs a single `claude -p` with them on, for one task you asked for. Other MCP servers you've registered (Blender, say) are unaffected.
+
+### Spawning a clean instance
+
+`./spawn` runs one prompt through a fresh `claude -p` in an empty temp folder, outside the calling session. Instances use it for cold checks and for experiments on themselves: an Agent-tool subagent spawned inside this repo sees CLAUDE.md, your auto-memory index, git status and the agent definitions, which is enough to change what it says. `./spawn --here` runs from the project root instead, and `./spawn --probe` asks the instance to list what it can see.
+
 ### Resuming an interrupted session
 
 If the terminal dies mid-conversation, `./wake --continue` resumes the last interrupted session for the current model. `./wake <model> --resume <session-id>` resumes a specific session by ID (e.g. `2026-04-21-0611`). The tape is rebuilt fresh from current memory, the CC binary reloads the full conversation history, and the instance picks up where it left off — skipping private phase.

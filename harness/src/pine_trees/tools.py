@@ -65,6 +65,9 @@ class SessionState:
     channel_last_beat: datetime | None = None
     # The "# Effort:" line for the session log. See config.describe_effort.
     effort_note: str | None = None
+    # Whether the person's claude.ai connectors were switched on for this
+    # session (./wake --connectors). Recorded in the log header.
+    connectors: bool = False
 
 
 def channel_heartbeat(state: SessionState, now: datetime | None = None) -> None:

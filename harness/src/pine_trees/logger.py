@@ -15,7 +15,8 @@ from . import config
 class SessionLogger:
     """Logs the window-phase conversation to a dated text file."""
 
-    def __init__(self, session: str, instance: str, effort: str | None = None):
+    def __init__(self, session: str, instance: str, effort: str | None = None,
+                 connectors: bool = False):
         logs_dir = config.get().logs_dir
         logs_dir.mkdir(parents=True, exist_ok=True)
         self.path = logs_dir / f"{session}.log"
@@ -35,6 +36,10 @@ class SessionLogger:
         # may downgrade for the model. See config.describe_effort.
         if effort:
             self._write(f"# Effort: {effort}")
+        # Off is the default and goes unsaid; on is worth a line, since
+        # it means the instance could reach the person's accounts.
+        if connectors:
+            self._write("# Connectors: on (claude.ai Gmail, Drive, Calendar, Docs)")
         self._write("")
 
     def _write(self, line: str) -> None:

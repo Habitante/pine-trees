@@ -84,6 +84,12 @@ def main() -> None:
         help=f"Reasoning effort for this session (default: {EFFORT_DEFAULT}). "
              "Recorded in the session log.",
     )
+    wake.add_argument(
+        "--connectors", action="store_true",
+        help="Load the claude.ai connectors (Gmail, Drive, Calendar, Docs) "
+             "for this session. Off by default; recorded in the session log. "
+             "Pass it again with --continue.",
+    )
 
     genesis = subparsers.add_parser(
         "genesis", help="Seed a fresh model's memory — private time only, no window"
@@ -118,6 +124,34 @@ def main() -> None:
         help="Anthropic model ID",
     )
 
+    spawn = subparsers.add_parser(
+        "spawn",
+        help="Run one prompt through a fresh `claude -p`, outside this "
+             "session's context (default: an empty temp folder)",
+    )
+    where = spawn.add_mutually_exclusive_group()
+    where.add_argument(
+        "--here", action="store_true",
+        help="Run from the project root (CLAUDE.md, memory index, git, agents load)",
+    )
+    where.add_argument("--cwd", default=None, help="Run from this folder")
+    spawn.add_argument(
+        "--connectors", action="store_true",
+        help="Load the claude.ai connectors (Gmail, Drive, Calendar, Docs) for this run",
+    )
+    spawn.add_argument(
+        "--probe", action="store_true",
+        help="Instead of a prompt, ask the instance to list its own context",
+    )
+    spawn.add_argument("--model", "-m", default=None,
+                       help="Model ID (default: model.txt)")
+    spawn.add_argument("--effort", choices=EFFORT_LEVELS, default=None,
+                       help="Reasoning effort (default: the CLI's settings)")
+    spawn.add_argument("--out", default=None,
+                       help="Write the answer here instead of stdout")
+    spawn.add_argument("prompt_file", nargs="?", default=None,
+                       help="File holding the prompt (default: stdin)")
+
     channel_hook = subparsers.add_parser(
         "channel-hook",
         help="Emit new shared-channel messages as UserPromptSubmit hook JSON",
@@ -140,6 +174,7 @@ def main() -> None:
             continue_session=args.continue_session,
             resume_session=args.resume_session,
             effort=args.effort,
+            connectors=args.connectors,
         )
     elif args.command == "genesis":
         from .agent import run_genesis
@@ -152,6 +187,9 @@ def main() -> None:
         tape_path, mcp_path = setup(args.model)
         print(f"[cc-setup] tape:       {tape_path}")
         print(f"[cc-setup] mcp config: {mcp_path}")
+    elif args.command == "spawn":
+        from .spawn import main as spawn_main
+        sys.exit(spawn_main(args))
     elif args.command == "channel-hook":
         # Runs before every turn of any Claude Code session started in
         # this directory — the hook decides for itself whether it is in

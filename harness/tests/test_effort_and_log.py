@@ -128,3 +128,29 @@ def test_wake_rejects_unknown_effort(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["pine-trees", "wake", "--model", "x", "--effort", "huge"])
     with pytest.raises(SystemExit):
         cli.main()
+
+
+# --- ./wake --connectors ---
+
+
+def test_connectors_line_in_header_only_when_on(tmp_path):
+    on = SessionLogger(session="s-on", instance="m", connectors=True)
+    off = SessionLogger(session="s-off", instance="m")
+    on.close()
+    off.close()
+    assert "# Connectors: on" in on.path.read_text(encoding="utf-8")
+    assert "Connectors" not in off.path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("argv, expected", [
+    (["wake", "--model", "claude-x", "--connectors"], True),
+    (["wake", "--model", "claude-x"], False),
+])
+def test_wake_forwards_connectors(monkeypatch, argv, expected):
+    from pine_trees import __main__ as cli, agent
+
+    seen = {}
+    monkeypatch.setattr(agent, "run", lambda model, **kw: seen.update(kw))
+    monkeypatch.setattr(sys, "argv", ["pine-trees", *argv])
+    cli.main()
+    assert seen["connectors"] is expected

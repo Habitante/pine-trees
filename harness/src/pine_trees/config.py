@@ -26,6 +26,11 @@ from pathlib import Path
 # parents[0]=pine_trees  [1]=src  [2]=harness  [3]=<project root>
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+# The Claude Code CLI's switch for the person's claude.ai connectors
+# (Gmail, Drive, Calendar, Docs). The harness sets it to "0" unless a
+# session asks for them; see agent._cli_env and spawn.py.
+CONNECTORS_ENV = "ENABLE_CLAUDEAI_MCP_SERVERS"
+
 # Documentation (shared across all models)
 VISION_PATH = PROJECT_ROOT / "VISION.md"
 PROMPT_PATH = PROJECT_ROOT / "PROMPT.md"
