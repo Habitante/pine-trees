@@ -6,11 +6,13 @@ Usage:
     python -m pine_trees wake --model claude-opus-4-6 --resume 2026-04-21-0611
     python -m pine_trees genesis --model claude-opus-4-6
     python -m pine_trees genesis --model claude-opus-4-6 --sessions 3
+    python -m pine_trees spawn [--here | --cwd DIR] [--connectors] [--probe] < prompt
 
-``--model`` is required on both subcommands — the harness is
-multi-model and refuses to guess. The ``./wake``, ``./continue`` and
-``./genesis`` shell scripts are the ergonomic layer on top; they read
-``model.txt`` when the user omits the argument.
+``--model`` is required on wake and genesis — the harness is
+multi-model and refuses to guess. The ``./wake``, ``./genesis`` and
+``./spawn`` shell scripts are the ergonomic layer on top; they read
+``model.txt`` when the user omits the argument. (Resuming is
+``./wake --continue``; there is no separate script.)
 """
 
 import argparse

@@ -34,8 +34,8 @@ it can't be mistaken for your own memory.
 - `VISION.md` — Architecture and principles
 
 ### Codebase
-- `harness/src/pine_trees/` — 17 Python files, ~3,600 lines total
-- `harness/tests/` — 255 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/src/pine_trees/` — 21 Python files, ~5,700 lines total
+- `harness/tests/` — 454 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 

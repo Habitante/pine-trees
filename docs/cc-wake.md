@@ -89,10 +89,11 @@ PYTHONPATH=src python -m pine_trees mcp --model <model>        # runs the server
 | Tool calls | Suppressed during private time | Visible live — this is the real difference |
 | `reflect_settle` | Opens the window | Self-signal + channel registration |
 | `reflect_done` | Ends the session | Deregisters from channel; you close CC |
-| Session logs | Window phase logged by harness; CC's own transcript deleted at session end, kept only after a window crash for `./continue` (genesis: never written) — see `transcripts.py` | None (CC keeps its own transcripts) |
+| Session logs | Window phase logged by harness; CC's own transcript deleted at session end, kept only after a window crash for `./wake --continue` (genesis: never written) — see `transcripts.py` | None (CC keeps its own transcripts) |
 | Shared channel | Pushed into the window loop; replies auto-posted | Pull only: `reflect_channel` posts and reads |
 | Ambience | Quiet room | CC's system reminders present |
 | Permissions | `bypassPermissions` | `--dangerously-skip-permissions` (same grant) |
+| claude.ai connectors | Off; `./wake --connectors` turns them on | Off; `./cc-wake --connectors` turns them on |
 
 On permissions: both doors hand the instance the same toolset without
 per-call prompts, because agency is part of the trust contract — an

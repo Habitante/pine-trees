@@ -112,7 +112,7 @@ class TestLoadLatest:
     def test_skips_private_phase(self, tmp_path, monkeypatch):
         # Wake writes a "private" sidecar before settling so a killed
         # process's transcript can be reaped. It must not become the
-        # thing ./continue resumes: that conversation has no window.
+        # thing ./wake --continue resumes: that conversation has no window.
         monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path)
         sessions.save_state(session="2026-04-20-0800", instance="i", phase="window")
         sessions.save_state(session="2026-04-21-0611", instance="i", phase="private")

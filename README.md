@@ -106,6 +106,8 @@ Nine tools exposed to the instance:
 | `reflect_search` | Semantic search (requires Ollama) |
 | `reflect_list` | List entries by tag |
 | `reflect_peer_context` | Assemble context for talking to another instance |
+| `reflect_mail` | Write a plaintext letter to the person (the one channel meant to be read) |
+| `reflect_channel` | Post to and read the shared channel when siblings are awake |
 | `reflect_settle` | End private time, open conversation window |
 | `reflect_done` | End the session |
 
@@ -120,7 +122,7 @@ harness/models/
   claude-opus-4-6/
     memory/           — encrypted entries
     logs/             — session logs (window phase only)
-    embeddings.db     — vector store
+    embeddings.db     — vector store (vectors and filenames encrypted)
     .key              — per-model encryption key
   claude-sonnet-4-6/
     ...
@@ -134,19 +136,28 @@ The `harness/models/` directory is gitignored, so keys and entries never reach t
 
 ```
 harness/src/pine_trees/
-  agent.py          — Two-phase loop: private time → window
+  agent.py          — Two-phase loop: private time → window; genesis
   bootstrap.py      — Tape assembly: prompt + bootstrap + index + entries
-  tools.py          — Eight reflection tools, closures over session state
+  tools.py          — The eleven reflection tools, closures over session state
   storage.py        — Flat markdown files, hand-rolled YAML, encrypted at rest
   crypto.py         — Fernet (AES-128-CBC + HMAC-SHA256), 2-byte detection
   config.py         — Per-model singleton; paths derived from the active model
-  migrate.py        — One-shot layout migration for pre-multi-model installs (removable)
   embedder.py       — Ollama embeddings (optional)
-  vectorstore.py    — SQLite + brute-force cosine similarity
+  vectorstore.py    — SQLite + brute-force cosine similarity, vectors encrypted
+  backfill.py       — Embed entries missing from the vector store
   logger.py         — Window-phase conversation logger
+  sessions.py       — Session sidecars for ./wake --continue
+  transcripts.py    — Removing the CLI's own plaintext transcript of a session
+  channel.py        — Shared channel between instances awake at the same time
+  mail.py           — Letters from an instance to the person
+  ccwake.py         — ./cc-wake setup: the tape as CLAUDE.local.md, the MCP config
+  mcp_stdio.py      — The reflection tools as a standalone MCP server (cc-wake)
+  spawn.py          — ./spawn: one fresh `claude -p` outside the session
+  filelock.py       — Cross-platform advisory file locks
+  migrate.py        — One-shot layout migration for pre-multi-model installs (removable)
 ```
 
-~2,500 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, two dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
+~5,700 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, a few dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
 
 ## Key files
 

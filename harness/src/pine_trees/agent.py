@@ -1227,7 +1227,7 @@ async def _run_async(
         if prior.get("instance") != cfg.model_safe_name:
             print(f"{RED}[error] Session {prior.get('session')} belongs to "
                   f"{prior.get('instance')}, not {cfg.model_safe_name}.{RST}")
-            print(f"{DIM}  Run: ./continue {prior.get('instance')}{RST}")
+            print(f"{DIM}  Run: ./wake {prior.get('instance')} --continue{RST}")
             sys.exit(1)
 
         state = SessionState(
@@ -1411,7 +1411,7 @@ async def _run_async(
         _print_claude_api_unreachable(e)
         sys.exit(1)
     finally:
-        # The CLI's transcript is kept only while ./continue can still
+        # The CLI's transcript is kept only while ./wake --continue can still
         # use it: settled, window not finished (a crash, a kill, Ctrl-C
         # mid-conversation). Every other way out deletes it — reflect_done,
         # the turn cap, a clean close, and a private-phase error or

@@ -1,6 +1,6 @@
 """Agent-facing tools for Pine Trees.
 
-Ten tools exposed to Claude:
+Eleven tools exposed to Claude:
   - reflect_read(filename)         -> dict
   - reflect_write(slug, content, tags?, moves?) -> str
   - reflect_edit(filename, content, description?) -> str

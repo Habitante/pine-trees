@@ -18,7 +18,7 @@ Two remedies, one per run mode:
     ``<uuid>/subagents/agent-*.meta.json`` (its type and the one-line
     description the instance gave the Agent call), so genesis deletes
     that folder after each session too.
-  - Wake keeps it only while it can still serve ``./continue``: the
+  - Wake keeps it only while it can still serve ``./wake --continue``: the
     session settled and the window has not finished. Every other way
     out deletes it in-process, and ``sweep`` at boot reaps what a
     killed process could not.
@@ -129,7 +129,7 @@ def sweep(now: datetime | None = None) -> int:
 
     Finished sessions, and private phases old enough that their process
     is certainly gone. Sessions parked in the window are left alone —
-    that transcript is what ``./continue`` resumes from.
+    that transcript is what ``./wake --continue`` resumes from.
     """
     now = now or datetime.now()
     total = 0

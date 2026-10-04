@@ -132,7 +132,7 @@ class TestSweep:
         assert transcripts.paths(sid) == []
 
     def test_keeps_window_sessions_for_continue(self):
-        # A settled session that never finished is what ./continue
+        # A settled session that never finished is what ./wake --continue
         # resumes from. Its transcript is the whole point.
         sid = str(uuid.uuid4())
         _plant(sid)
@@ -322,7 +322,7 @@ class TestWakeExitPaths:
         assert recorded[0]["cc_session_id"] == _CliStandIn.seen[0].session_id
 
     def test_wake_keeps_persistence_on(self, wake):
-        # ./continue needs the transcript while a window is open.
+        # ./wake --continue needs the transcript while a window is open.
         wake(_done)
         assert "no-session-persistence" not in (_CliStandIn.seen[0].extra_args or {})
 
