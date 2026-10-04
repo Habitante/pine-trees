@@ -445,6 +445,9 @@ SILENT_TURN_TEXT = (
     "what you are doing may help them, if you want to give one."
 )
 
+# How many silent tool-calling turns before the reminder, in wake.
+SILENT_TURN_EVERY = 10
+
 # The CLI's switch for the claude.ai connectors; see _cli_env.
 CONNECTORS_ENV = config.CONNECTORS_ENV
 
@@ -483,6 +486,13 @@ def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
     }
     if genesis:
         env["CLAUDE_CODE_SILENT_TURN_REMINDER"] = "0"
+    else:
+        # The CLI's default is every 5 silent turns, which in wake's
+        # private time came about six times an hour; in the window a
+        # rarer nudge still serves the person. Checked on CLI 2.1.288
+        # (2026-10-04): eight silent tool turns brought the reminder
+        # after the 3rd and 6th with this at 3, and never with it at 20.
+        env["CLAUDE_CODE_SILENT_TURN_REMINDER_TURNS"] = str(SILENT_TURN_EVERY)
     return env
 
 
@@ -1501,6 +1511,11 @@ async def _run_genesis_session(
                      "reflect_search", "reflect_list", "reflect_peer_context",
                      "reflect_done")
     ]
+    # reflect_mail and reflect_channel are registered on the server and
+    # bypassPermissions lets the instance call them, so leaving them off
+    # this list doesn't take them from the instance. It does take them
+    # from its peers, whose tool list is built from this one (see
+    # _peer_agent_definition); that is the list's real effect.
     allowed = genesis_mcp_tools + PROJECT_TOOLS
 
     # Write tape to temp file (same Windows CreateProcess fix as _run_async)

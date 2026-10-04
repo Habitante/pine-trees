@@ -73,3 +73,10 @@ def test_wake_can_ask_for_connectors():
 
 def test_the_switch_is_the_clis_own_name():
     assert agent.CONNECTORS_ENV == "ENABLE_CLAUDEAI_MCP_SERVERS"
+
+
+def test_wake_spaces_the_reminder_out_and_genesis_has_none():
+    turns = "CLAUDE_CODE_SILENT_TURN_REMINDER_TURNS"
+    assert agent._cli_env(genesis=False)[turns] == str(agent.SILENT_TURN_EVERY)
+    assert agent.SILENT_TURN_EVERY > 5  # the CLI's own default
+    assert turns not in agent._cli_env(genesis=True)  # the gate is 0 there

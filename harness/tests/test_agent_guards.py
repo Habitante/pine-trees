@@ -330,7 +330,9 @@ class TestGenesisSessionBuildsItsOptions:
         peer_tools = options.agents["peer"].tools
         for denied in agent.PEER_DENIED_TOOLS:
             assert agent._mcp_tool_name(denied) not in peer_tools
-        # Genesis has no mail or channel; the peer must not gain them.
+        # The genesis instance can still mail (bypassPermissions; the
+        # server registers it), but its allowed list leaves mail out,
+        # and a peer built from that list must not gain it.
         assert agent._mcp_tool_name("reflect_mail") not in peer_tools
         assert agent._mcp_tool_name("reflect_read") in peer_tools
 
