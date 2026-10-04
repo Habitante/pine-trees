@@ -56,4 +56,8 @@ fi
 # Save model choice — wake will pick this up by default.
 echo "$MODEL" > model.txt
 
-cd harness && PYTHONPATH=src python -m pine_trees genesis --model "$MODEL" "${SESSIONS[@]}" "$@"
+# exec, so bash is gone once the harness starts. bash reads a script as it
+# runs; a session can outlive an edit to this file, and on 2026-10-04 one
+# did, so bash resumed mid-line in the new version and failed to parse it.
+# Landing on a line start would have run that line instead.
+cd harness && PYTHONPATH=src exec python -m pine_trees genesis --model "$MODEL" "${SESSIONS[@]}" "$@"
