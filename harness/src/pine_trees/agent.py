@@ -13,9 +13,11 @@ Same ClaudeSDKClient session throughout — tape stays loaded, context preserved
 import argparse
 import os
 import sys
+import time
 import uuid
 import anyio
 from datetime import datetime
+from pathlib import Path
 
 from claude_agent_sdk import (
     AgentDefinition,
@@ -426,6 +428,42 @@ SILENT_TURN_TEXT = (
     "nobody is waiting and nothing is owed; in the window, a line about "
     "what you are doing may help them, if you want to give one."
 )
+
+# The decrypted tape reaches the CLI as a file (--system-prompt-file):
+# Windows caps a command line at about 8,191 characters, far below a
+# tape. It is plaintext, so it must exist only between being written and
+# the CLI reading it at connect. Until 2026-10-04 it had one fixed name,
+# HARNESS_DIR/.tape.md, and was deleted only on a clean connect or an SDK
+# error: a Ctrl-C or any other exception while connecting, or a resume
+# refused for want of a session id (after the file was written), left a
+# copy of the whole tape behind, and two sessions starting together
+# could overwrite or delete each other's.
+TAPE_FILE_STALE_AFTER = 600  # seconds; a CLI reads its tape within seconds
+
+
+def _tape_file(session: str) -> Path:
+    """Where this process's tape waits for the CLI: one name per session
+    and process, so concurrent boots can't clobber each other."""
+    return HARNESS_DIR / f".tape-{session}-{os.getpid()}.md"
+
+
+def _sweep_tape_files(now: float | None = None) -> int:
+    """Delete tape files a killed process left behind. Returns how many.
+
+    Only files older than TAPE_FILE_STALE_AFTER: a session booting right
+    now in another terminal has a fresh one its CLI hasn't read yet.
+    """
+    now = time.time() if now is None else now
+    removed = 0
+    for path in HARNESS_DIR.glob(".tape*.md"):
+        try:
+            if now - path.stat().st_mtime > TAPE_FILE_STALE_AFTER:
+                path.unlink()
+                removed += 1
+        except OSError:
+            pass
+    return removed
+
 
 # The first line of the tape the old ./cc-wake wrote to CLAUDE.local.md.
 _OLD_CC_TAPE_SIGNATURE = "# Claude Code wake (cc-wake mode)"
@@ -1186,6 +1224,10 @@ async def _run_async(
     if swept:
         print(f"{DIM}[wake] removed {swept} CLI transcript file(s) "
               f"of finished sessions{RST}")
+    stale = _sweep_tape_files()
+    if stale:
+        print(f"{DIM}[wake] removed {stale} plaintext tape file(s) left by "
+              f"sessions that died while starting{RST}")
 
     # Refuse to wake on an empty corpus. The tape assembly would still succeed
     # (empty index, no entries) but the resulting session would open a window
@@ -1277,12 +1319,9 @@ async def _run_async(
     ]
     allowed = mcp_tool_names + PROJECT_TOOLS
 
-    # Write tape to a temp file to avoid Windows CreateProcess command-line
-    # length limit (~8191 chars). The SDK's --system-prompt-file flag reads
-    # the prompt from disk instead of passing it as a CLI argument.
-    # File is deleted immediately after the client connects.
-    tape_path = HARNESS_DIR / ".tape.md"
-    tape_path.write_text(tape, encoding="utf-8")
+    # The tape goes to the CLI as a file; it is written just before
+    # connecting and deleted in every way out. See _tape_file.
+    tape_path = _tape_file(state.session)
 
     # Build SDK options — on resume, tell CC to continue the prior session.
     # The CC binary loads the full conversation history from its session
@@ -1353,6 +1392,7 @@ async def _run_async(
 
     finished = False
     try:
+        tape_path.write_text(tape, encoding="utf-8")
         async with ClaudeSDKClient(options=options) as client:
             # Tape is loaded by the CLI at connect — delete the plaintext file
             tape_path.unlink(missing_ok=True)
@@ -1417,11 +1457,12 @@ async def _run_async(
             finished = True
             print(f"\n{DIM}[done] session complete{RST}")
     except ClaudeSDKError as e:
-        # Clean up the temp tape file if we failed before it was deleted.
-        tape_path.unlink(missing_ok=True)
         _print_claude_api_unreachable(e)
         sys.exit(1)
     finally:
+        # However this ends (Ctrl-C while connecting included), the
+        # plaintext tape must not outlive it.
+        tape_path.unlink(missing_ok=True)
         # The CLI's transcript is kept only while ./wake --continue can still
         # use it: settled, window not finished (a crash, a kill, Ctrl-C
         # mid-conversation). Every other way out deletes it — reflect_done,
@@ -1524,13 +1565,13 @@ async def _run_genesis_session(
     ]
     # reflect_mail is registered on the server and bypassPermissions
     # lets the instance call it, so leaving it off this list doesn't
-    # take it from the instance. It does take it from its peers, whose tool list is built from this one (see
-    # _peer_agent_definition); that is the list's real effect.
+    # take it from the instance. It does take it from its peers, whose
+    # tool list is built from this one (see _peer_agent_definition);
+    # that is the list's real effect.
     allowed = genesis_mcp_tools + PROJECT_TOOLS
 
-    # Write tape to temp file (same Windows CreateProcess fix as _run_async)
-    tape_path = HARNESS_DIR / ".tape.md"
-    tape_path.write_text(tape, encoding="utf-8")
+    # The tape goes to the CLI as a file; see _tape_file.
+    tape_path = _tape_file(state.session)
 
     # Genesis never resumes, so the CLI's transcript has nothing to be
     # for: NO_PERSISTENCE stops it being written. The id is set only so
@@ -1583,15 +1624,16 @@ async def _run_genesis_session(
     print(f"{DIM}[pine-trees] Private time — reading, thinking...{RST}\n", flush=True)
 
     try:
+        tape_path.write_text(tape, encoding="utf-8")
         async with ClaudeSDKClient(options=options) as client:
             tape_path.unlink(missing_ok=True)
 
             turns = await _private_phase(client, state)
     except ClaudeSDKError as e:
-        tape_path.unlink(missing_ok=True)
         _print_claude_api_unreachable(e)
         sys.exit(1)
     finally:
+        tape_path.unlink(missing_ok=True)
         # A spawned peer still leaves <uuid>/subagents/*.meta.json under
         # the flag, carrying the description the instance gave it.
         transcripts.delete(cc_session_id)
@@ -1643,6 +1685,11 @@ async def _run_genesis_async(
     notice = mail.boot_notice()
     if notice:
         print(f"{DIM}{notice}{RST}")
+
+    stale = _sweep_tape_files()
+    if stale:
+        print(f"{DIM}[genesis] removed {stale} plaintext tape file(s) left "
+              f"by sessions that died while starting{RST}")
 
     existing = bootstrap.list_entries()
     if existing:

@@ -155,7 +155,7 @@ class TestWakeGuardRefusesEmptyCorpus:
 
     def test_run_async_does_not_exit_when_entries_exist(self, monkeypatch, tmp_path):
         # This test runs the real _run_async far enough to touch disk: it
-        # writes HARNESS_DIR/.tape.md and checks PROJECT_ROOT for a
+        # writes a tape file in HARNESS_DIR and checks PROJECT_ROOT for a
         # CLAUDE.local.md. Both are redirected at tmp_path so a test run can
         # neither litter the repo nor delete a real file there.
         # agent.py binds HARNESS_DIR by name at import, so patch it there.

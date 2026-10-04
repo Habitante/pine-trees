@@ -3,7 +3,7 @@ logs/
 *.key
 .key
 embeddings.db
-.tape.md
+.tape*.md
 
 # Per-model data — memory, logs, embeddings, and keys under models/<name>/
 models/

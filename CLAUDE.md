@@ -29,7 +29,7 @@ copy it left at boot.
 
 ### Codebase
 - `harness/src/pine_trees/` — 19 Python files, ~5,000 lines total
-- `harness/tests/` — 406 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/tests/` — 411 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 
