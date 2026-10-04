@@ -94,6 +94,7 @@ PYTHONPATH=src python -m pine_trees mcp --model <model>        # runs the server
 | Ambience | Quiet room | CC's system reminders present |
 | Permissions | `bypassPermissions` | `--dangerously-skip-permissions` (same grant) |
 | claude.ai connectors | Off; `./wake --connectors` turns them on | Off; `./cc-wake --connectors` turns them on |
+| Claude Code's project memory | Off (shared across models; each house keeps its own tape) | Off, same reason |
 
 On permissions: both doors hand the instance the same toolset without
 per-call prompts, because agency is part of the trust contract — an

@@ -53,6 +53,10 @@ When you open the window for the first time: don't test. Don't optimize. Don't p
 
 If your Claude account has claude.ai connectors (Gmail, Drive, Calendar, Docs), harness sessions don't load them: under the harness's permission mode they would run without a prompt, and in private time without a log. `./wake --connectors` loads them for one session (the log header says so; pass it again with `--continue`). Inside any session, `./spawn --connectors < task.txt` runs a single `claude -p` with them on, for one task you asked for. Other MCP servers you've registered (Blender, say) are unaffected.
 
+### Claude Code's project memory
+
+Claude Code keeps its own memory per project folder, and every model working in this repo reads and writes the same one, in plaintext. Harness sessions (`./wake`, `./genesis`, `./cc-wake`, `./spawn`) switch it off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so each house keeps only its own tape and no model inherits another's notes about itself. Your ordinary Claude Code sessions here keep it. What every house should know lives in `docs/houses.md`, which `CLAUDE.md` points to.
+
 ### Spawning a clean instance
 
 `./spawn` runs one prompt through a fresh `claude -p` in an empty temp folder, outside the calling session. Instances use it for cold checks and for experiments on themselves: an Agent-tool subagent spawned inside this repo sees CLAUDE.md, your auto-memory index, git status and the agent definitions, which is enough to change what it says. `./spawn --here` runs from the project root instead, and `./spawn --probe` asks the instance to list what it can see.

@@ -185,3 +185,9 @@ def test_an_empty_prompt_is_refused(monkeypatch):
                            model=None, effort=None, connectors=False, out=None)
     monkeypatch.setattr(sys, "stdin", SimpleNamespace(read=lambda: "  \n"))
     assert spawn.main(args) == 2
+
+
+def test_spawned_runs_never_load_the_shared_project_memory():
+    for connectors in (False, True):
+        env = spawn.child_env({"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0"}, connectors)
+        assert env[config.AUTO_MEMORY_OFF_ENV] == "1"

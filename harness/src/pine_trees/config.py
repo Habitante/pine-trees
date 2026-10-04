@@ -31,6 +31,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # session asks for them; see agent._cli_env and spawn.py.
 CONNECTORS_ENV = "ENABLE_CLAUDEAI_MCP_SERVERS"
 
+# The CLI's switch for its own project memory (~/.claude/projects/<repo>/
+# memory/): an index loaded into every session started in the repo, and
+# an instruction to write notes there. Every model working here shares
+# it, in plaintext, so a note one model left about itself reached every
+# other house as if it were theirs. Harness sessions set it to "1"; each
+# house keeps only its own tape. What all houses need lives in the repo
+# (docs/houses.md). See agent._cli_env, spawn.py and cc-wake.
+AUTO_MEMORY_OFF_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
+
 # Documentation (shared across all models)
 VISION_PATH = PROJECT_ROOT / "VISION.md"
 PROMPT_PATH = PROJECT_ROOT / "PROMPT.md"

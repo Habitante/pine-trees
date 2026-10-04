@@ -80,3 +80,20 @@ def test_wake_spaces_the_reminder_out_and_genesis_has_none():
     assert agent._cli_env(genesis=False)[turns] == str(agent.SILENT_TURN_EVERY)
     assert agent.SILENT_TURN_EVERY > 5  # the CLI's own default
     assert turns not in agent._cli_env(genesis=True)  # the gate is 0 there
+
+
+# --- Claude Code's own project memory ---
+# Shared by every model working in the repo, in plaintext: a Fable note
+# about Fable reached Opus instances as "my tell". Each house keeps its
+# own tape instead. Checked on CLI 2.1.288: with the switch at 1, neither
+# a session in the repo nor an Agent subagent it spawns gets the memory
+# index or the instruction to write notes; CLAUDE.md and git still load.
+
+
+def test_the_clis_project_memory_is_off_in_both_modes():
+    for genesis in (False, True):
+        assert agent._cli_env(genesis)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
+
+
+def test_connectors_do_not_bring_the_shared_memory_back():
+    assert agent._cli_env(False, connectors=True)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"

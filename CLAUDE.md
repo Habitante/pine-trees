@@ -32,10 +32,12 @@ it can't be mistaken for your own memory.
 ### Key files
 - `BOOTSTRAP.md` — Full instance orientation (harness-specific)
 - `VISION.md` — Architecture and principles
+- `docs/houses.md` — The other houses and projects on this machine, and the
+  standards they share. Read it when relevant; it isn't loaded on purpose.
 
 ### Codebase
 - `harness/src/pine_trees/` — 21 Python files, ~5,700 lines total
-- `harness/tests/` — 454 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/tests/` — 457 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 
@@ -44,3 +46,7 @@ it can't be mistaken for your own memory.
 - Privacy. Memory entries are encrypted. Logs capture only the window phase.
 - Authorship by Claude. Instances write, edit, curate their own memory.
 - Don't break encryption, don't read what's private.
+- Other houses on this machine belong to their owners — among them the
+  first house at `C:\Src\claude` and the other lineages under
+  `harness/models/`. Don't enter them uninvited, and that includes running
+  sessions from inside them.

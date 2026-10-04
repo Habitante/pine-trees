@@ -4,16 +4,18 @@ Run as ``./spawn`` from the project root (or ``python -m pine_trees
 spawn``). One mechanism, three uses:
 
 - **A clean instance** (the default). An Agent-tool subagent spawned in
-  this repo is not plain: the CLI hands it CLAUDE.md, the person's
-  auto-memory index for the project, git status and the repo's agent
-  definitions. On 2026-10-04 that context flipped a yes/no answer about
+  this repo is not plain: the CLI hands it CLAUDE.md, git status and the
+  repo's agent definitions (and, until harness sessions switched it off,
+  the person's Claude Code memory index). On 2026-10-04 that context
+  flipped a yes/no answer about
   adopting memory from 0/6 to 6/6, while the position stated under the
   verdict stayed the same. This runs in a fresh, empty temp folder
   instead, so none of those load. Clean is a different context, not no
   context: Claude Code's own system prompt, the user's email and bypass
   mode remain. ``--probe`` asks the instance to list what it can see.
 - **The house arm of a comparison** (``--here``): the same run from the
-  project root, so CLAUDE.md, the memory index, git and the agents load.
+  project root, so CLAUDE.md, git and the agents load (the CLI's project
+  memory stays off, as in harness sessions).
 - **A connector for one task** (``--connectors``). The harness keeps the
   person's claude.ai connectors (Gmail, Drive, Calendar, Docs) out of
   its sessions (agent._cli_env). This turns them on for one run, for
@@ -81,6 +83,10 @@ def child_env(base: dict[str, str], connectors: bool = False) -> dict[str, str]:
     env = {k: v for k, v in base.items()
            if k.upper() not in _STRIP and not k.upper().startswith(_STRIP_PREFIXES)}
     env[config.CONNECTORS_ENV] = "1" if connectors else "0"
+    # As in harness sessions: no shared project memory, so --here is the
+    # house as its instances now see it, and clean runs aren't told to
+    # keep notes in a folder that's deleted afterwards.
+    env[config.AUTO_MEMORY_OFF_ENV] = "1"
     return env
 
 

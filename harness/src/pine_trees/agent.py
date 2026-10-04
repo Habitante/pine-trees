@@ -483,6 +483,9 @@ def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
         ccwake.SDK_HARNESS_ENV: "1",
         "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT": SILENT_TURN_TEXT,
         CONNECTORS_ENV: "1" if connectors else "0",
+        # Each house keeps its own tape; the CLI's project memory is
+        # shared by every model here. See config.AUTO_MEMORY_OFF_ENV.
+        config.AUTO_MEMORY_OFF_ENV: "1",
     }
     if genesis:
         env["CLAUDE_CODE_SILENT_TURN_REMINDER"] = "0"

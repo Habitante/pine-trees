@@ -96,6 +96,11 @@ if [ "$CONNECTORS" = 1 ]; then
     echo "[cc-wake] claude.ai connectors on (Gmail, Drive, Calendar, Docs)"
 fi
 
+# Claude Code's own project memory is shared by every model working in
+# this repo; a house keeps its own tape instead (see agent._cli_env and
+# config.AUTO_MEMORY_OFF_ENV). Shared context lives in docs/houses.md.
+export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+
 # --model matters: the tape and the MCP server are bound to $MODEL, but
 # the session's model is whatever Claude Code defaults to. Without this
 # flag another model can end up in the room, writing entries stored
