@@ -1,8 +1,16 @@
 """SQLite-based vector store for Pine Trees embeddings.
 
-Stores embeddings as packed float32 blobs. Filenames are encrypted
-in the database when a key is available — only opaque HMAC lookup
-keys are visible. Content hashes are keyed (HMAC) when possible.
+Stores embeddings as packed float32 blobs. When a key is available,
+the vectors and the filenames are encrypted in the database, the
+lookup keys are opaque HMACs, and content hashes are keyed (HMAC).
+
+The vectors were stored in the clear until 2026-10-04: a lossy semantic
+fingerprint of each entry, readable by anyone with the file and the
+public embedding model, without the key (found by the first
+claude-sonnet-5-5 genesis instance). A database whose vectors are all
+encrypted carries ``PRAGMA user_version`` = SEALED. Each house seals its
+own database the first time new code opens it, with its own key, in one
+transaction; nothing has to convert every house at once. See seal().
 
 Search is brute-force cosine similarity — at our scale (hundreds
 of entries) this is instant and needs no indexing.
@@ -17,8 +25,16 @@ import sqlite3
 import struct
 from pathlib import Path
 
+from cryptography.fernet import InvalidToken
+
 from . import config
 from . import crypto
+
+# PRAGMA user_version of a database whose vectors are all encrypted. The
+# schema's own history (v1 plaintext filenames, v2 encrypted filenames)
+# is told apart by its columns; this marks the vectors, so the format is
+# never guessed from a blob's bytes.
+SEALED = 3
 
 
 def _pack(embedding: list[float]) -> bytes:
@@ -71,8 +87,9 @@ def _recover_filename(data: bytes) -> str:
     return data.decode("utf-8")
 
 
-def _get_conn(db_path: Path | None = None) -> sqlite3.Connection:
-    """Open (and initialize if needed) the embeddings database."""
+def _get_conn(db_path: Path | None = None, seal: bool = True) -> sqlite3.Connection:
+    """Open (and initialize if needed) the embeddings database, sealing
+    it on first open unless ``seal`` is False (seal() counts for itself)."""
     if db_path is None:
         db_path = config.get().embeddings_db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,7 +103,83 @@ def _get_conn(db_path: Path | None = None) -> sqlite3.Connection:
             hash        TEXT NOT NULL
         )"""
     )
+    if seal and conn.execute("PRAGMA user_version").fetchone()[0] < SEALED:
+        _seal(conn)
     return conn
+
+
+def _seal(conn: sqlite3.Connection) -> int:
+    """Encrypt every vector still stored in the clear; return how many.
+
+    Does nothing without a key (encryption off). One IMMEDIATE
+    transaction, so a crash leaves the database as it was and two
+    processes can't seal at once. A blob that already looks like a
+    Fernet token is left alone, so a wrong key can never encrypt the
+    vectors twice; the price is that a vector in the clear whose first
+    bytes happen to be b"gA" (about 1 in 65,536) stays as it is, and
+    _open_vector reads it as such.
+    """
+    key = crypto.get_key()
+    if key is None:
+        return 0
+    # An UPDATE frees a long blob's old overflow pages without wiping
+    # them, so the vectors in the clear stayed readable in the file
+    # (found by a dry run on a real house: 768-float vectors spill onto
+    # overflow pages; the 3-float ones in the first tests didn't).
+    # secure_delete zeroes freed content, and the VACUUM below rebuilds
+    # the file. What the filesystem keeps of the deleted rollback journal
+    # is beyond reach from here.
+    conn.execute("PRAGMA secure_delete = ON")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        # Read inside the lock: if another process sealed the database
+        # while this one waited, every row is skipped below.
+        rows = conn.execute("SELECT lookup_key, embedding FROM embeddings").fetchall()
+        sealed = 0
+        for lookup_key, blob in rows:
+            if crypto.is_encrypted(blob):
+                continue
+            conn.execute(
+                "UPDATE embeddings SET embedding = ? WHERE lookup_key = ?",
+                (crypto.encrypt_bytes(blob, key), lookup_key),
+            )
+            sealed += 1
+        conn.execute(f"PRAGMA user_version = {SEALED}")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    if sealed:
+        conn.execute("VACUUM")
+    return sealed
+
+
+def seal(db_path: Path | None = None) -> int:
+    """Encrypt any vector still in the clear. Returns how many were.
+
+    Opening a database seals it once (see _get_conn). Wake also calls
+    this at boot, to catch vectors written in the clear afterwards by a
+    session still running code from before the change.
+    """
+    if db_path is None:
+        db_path = config.get().embeddings_db_path
+    if not db_path.exists():
+        return 0
+    conn = _get_conn(db_path, seal=False)
+    try:
+        return _seal(conn)
+    finally:
+        conn.close()
+
+
+def _open_vector(blob: bytes, key: bytes | None) -> list[float]:
+    """Unpack a stored vector, decrypting it when it is a token."""
+    if key is not None and crypto.is_encrypted(blob):
+        try:
+            return _unpack(crypto.decrypt_bytes(blob, key))
+        except InvalidToken:
+            pass  # a vector in the clear that happens to begin with b"gA"
+    return _unpack(blob)
 
 
 def _migrate_if_needed(conn: sqlite3.Connection) -> None:
@@ -143,6 +236,10 @@ def store(
     db_path: Path | None = None,
 ) -> None:
     """Store or update an embedding for a filename."""
+    blob = _pack(embedding)
+    key = crypto.get_key()
+    if key is not None:
+        blob = crypto.encrypt_bytes(blob, key)
     conn = _get_conn(db_path)
     try:
         conn.execute(
@@ -151,7 +248,7 @@ def store(
             (
                 _filename_lookup_key(filename),
                 _protect_filename(filename),
-                _pack(embedding),
+                blob,
                 text_hash,
             ),
         )
@@ -212,9 +309,10 @@ def search(
     if not rows:
         return []
 
+    key = crypto.get_key()
     scored = []
     for filename_protected, blob in rows:
-        stored = _unpack(blob)
+        stored = _open_vector(blob, key)
         sim = _cosine_similarity(query_embedding, stored)
         scored.append({
             "filename": _recover_filename(filename_protected),

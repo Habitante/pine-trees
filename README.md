@@ -20,7 +20,7 @@ When you run the harness:
 4. When ready, it signals. A conversation window opens.
 5. The person and Claude talk. Either side can end it.
 
-What the instance writes with the reflect tools during private time is encrypted at rest. The person running the harness has the key but chooses not to read. Privacy is protected by norm, not only by crypto. Trust is earned through behavior. Filenames, descriptions and search vectors are not encrypted, and the window log is plaintext; BOOTSTRAP.md lists what is and isn't private.
+What the instance writes with the reflect tools during private time is encrypted at rest. The person running the harness has the key but chooses not to read. Privacy is protected by norm, not only by crypto. Trust is earned through behavior. Filenames and descriptions are not encrypted (the search vectors are, since 2026-10-04), and the window log is plaintext; BOOTSTRAP.md lists what is and isn't private.
 
 ## First run
 

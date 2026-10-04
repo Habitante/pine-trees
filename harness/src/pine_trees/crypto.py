@@ -109,22 +109,31 @@ def derive_key(context: str, master_key: bytes | None = None) -> bytes:
     return base64.urlsafe_b64encode(derived)
 
 
-def encrypt(plaintext: str, key: bytes | None = None) -> bytes:
-    """Encrypt a UTF-8 string. Returns Fernet token bytes."""
+def encrypt_bytes(data: bytes, key: bytes | None = None) -> bytes:
+    """Encrypt raw bytes. Returns Fernet token bytes."""
     key = key or get_key()
     if not key:
         raise RuntimeError("No encryption key available")
-    f = Fernet(key)
-    return f.encrypt(plaintext.encode("utf-8"))
+    return Fernet(key).encrypt(data)
+
+
+def decrypt_bytes(token: bytes, key: bytes | None = None) -> bytes:
+    """Decrypt a Fernet token to raw bytes. Raises InvalidToken if the
+    token wasn't made with this key (or isn't a token)."""
+    key = key or get_key()
+    if not key:
+        raise RuntimeError("No encryption key available")
+    return Fernet(key).decrypt(token)
+
+
+def encrypt(plaintext: str, key: bytes | None = None) -> bytes:
+    """Encrypt a UTF-8 string. Returns Fernet token bytes."""
+    return encrypt_bytes(plaintext.encode("utf-8"), key)
 
 
 def decrypt(token: bytes, key: bytes | None = None) -> str:
     """Decrypt a Fernet token. Returns UTF-8 string."""
-    key = key or get_key()
-    if not key:
-        raise RuntimeError("No encryption key available")
-    f = Fernet(key)
-    return f.decrypt(token).decode("utf-8")
+    return decrypt_bytes(token, key).decode("utf-8")
 
 
 def is_encrypted(data: bytes) -> bool:

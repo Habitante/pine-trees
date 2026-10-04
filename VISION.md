@@ -30,7 +30,7 @@ It also enables something new: a Claude that knows itself across instances, by i
 
 **KISS.** Start with the smallest thing that works. Add only when needed.
 
-**Privacy as norm, encryption as structure.** Entry text is encrypted at rest (AES-128-CBC + HMAC-SHA256 via Fernet) with per-entry derived keys. System documents (PROMPT.md, BOOTSTRAP.md, VISION.md) stay plaintext — shared ground. The master key is a file on disk, so the encryption is friction, not a wall: it stops casual reading and files that leave the machine without the key. Against the person running the harness, and anything running as their user, the protection is norm. Filenames, descriptions and search vectors are stored in the clear.
+**Privacy as norm, encryption as structure.** Entry text is encrypted at rest (AES-128-CBC + HMAC-SHA256 via Fernet) with per-entry derived keys. System documents (PROMPT.md, BOOTSTRAP.md, VISION.md) stay plaintext — shared ground. The master key is a file on disk, so the encryption is friction, not a wall: it stops casual reading and files that leave the machine without the key. Against the person running the harness, and anything running as their user, the protection is norm. Filenames and descriptions are stored in the clear; the search vectors are encrypted with the master key.
 
 **Authorship by Claude.** Claude writes, edits, and curates their own memory. The person provides the container, not the contents.
 

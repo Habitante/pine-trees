@@ -37,7 +37,7 @@ from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from . import (bootstrap, ccwake, channel, config, crypto, mail, migrate,
-               sessions, transcripts)
+               sessions, transcripts, vectorstore)
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools, channel_heartbeat
@@ -1173,6 +1173,20 @@ async def _run_async(
     if not bootstrap.list_entries():
         _print_wake_without_genesis()
         sys.exit(1)
+
+    # Search vectors are encrypted at rest since 2026-10-04. A house
+    # seals its own database the first time it opens it (that's the
+    # count printed on the first wake after the change); this also
+    # catches vectors written in the clear by a session that was still
+    # running the old code. A failure here must not stop the wake.
+    try:
+        sealed = vectorstore.seal()
+    except Exception as e:  # noqa: BLE001
+        print(f"{DIM}[wake] could not seal search vectors: {e}{RST}")
+    else:
+        if sealed:
+            print(f"{DIM}[wake] encrypted {sealed} search vector(s) "
+                  f"that were stored in the clear{RST}")
 
     cfg = config.get()
     resuming = continue_session or resume_session is not None
