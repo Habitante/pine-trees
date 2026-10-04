@@ -59,12 +59,12 @@ def _test_config(request, tmp_path, monkeypatch):
     monkeypatch.setattr(pt_config, "_config", cfg)
     # Isolate channel to tmp so tests don't pollute the real channel dir
     monkeypatch.setattr(pt_config, "CHANNEL_DIR", tmp_path / "channel")
-    # Isolate the project root. _run_async and _run_genesis_async call
-    # ccwake.clear_tape() at boot, before their guards fire, and it
-    # resolves config.PROJECT_ROOT at call time — so any test that
-    # drives those entry points deletes the real CLAUDE.local.md, i.e.
-    # a live cc-wake session's tape. Three tests in test_agent_guards
-    # did exactly that. Redirecting here makes the suite safe by
+    # Isolate the project root. _run_async and _run_genesis_async check
+    # it for a CLAUDE.local.md at boot (agent._remove_old_cc_tape),
+    # before their guards fire, resolving config.PROJECT_ROOT at call
+    # time — so any test that drives those entry points could delete a
+    # real file there. Three tests in test_agent_guards once did exactly
+    # that, to a live tape. Redirecting here makes the suite safe by
     # construction rather than by each test remembering to opt in,
     # which is the guard that already failed once.
     #

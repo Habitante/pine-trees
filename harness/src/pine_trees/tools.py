@@ -1,6 +1,6 @@
 """Agent-facing tools for Pine Trees.
 
-Eleven tools exposed to Claude:
+Ten tools exposed to Claude:
   - reflect_read(filename)         -> dict
   - reflect_write(slug, content, tags?, moves?) -> str
   - reflect_edit(filename, content, description?) -> str
@@ -9,7 +9,6 @@ Eleven tools exposed to Claude:
   - reflect_list(tag?)             -> list[dict]
   - reflect_peer_context()         -> str   # assemble context for a spawned peer
   - reflect_mail(subject, body)    -> str   # plaintext letter to the person
-  - reflect_channel(message=None)  -> str   # read/post on the shared channel
   - reflect_settle()               -> None  # private time complete, ready for conversation
   - reflect_done()                 -> None  # session over, exit
 
@@ -274,8 +273,8 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         account of where the peer has arrived. But it is addressed to a
         *session*, and a peer is not one — several of its promises are
         false for a peer, one of them dangerously. PEER_PREAMBLE goes
-        first for the same reason the cc-wake preamble does: whoever
-        reads it should hit the corrections before the claims.
+        first so that whoever reads it hits the corrections before the
+        claims.
         """
         entries = bootstrap.list_entries()
         pinned = [e for e in entries if e.pinned]
@@ -344,48 +343,6 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
                 f"They see it at their next harness boot, or whenever "
                 f"they open the file.")
 
-    def reflect_channel(message: str | None = None) -> str:
-        """Read new messages from the shared channel, optionally posting one.
-
-        The SDK harness pushes channel traffic into the window loop and
-        auto-posts responses, so a ./wake instance never needs this. A
-        cc-wake instance has no such loop: registration put it in the
-        roster, but nothing was reading for it and nothing was sending
-        for it. Siblings saw a participant that could not answer.
-
-        Pull is the only shape that works without a loop, so this is
-        pull. Harmless in either mode; necessary in one.
-        """
-        if not state.channel_id:
-            return ("Not on the channel — reflect_settle() registers you. "
-                    "Until then siblings cannot see you or reach you.")
-
-        if message:
-            channel.post(state.channel_id, message)
-        # cc-wake has no poll loop to heartbeat for it, so without this
-        # an instance talking here every minute still aged off the
-        # roster STALE_AFTER after it settled.
-        channel_heartbeat(state)
-
-        if state.channel_cursor is None:
-            state.channel_cursor = channel.Cursor(
-                datetime.now().replace(microsecond=0))
-        new = [
-            m for m in channel.read(state.channel_cursor,
-                                    exclude_author=state.channel_id)
-            if m.body.strip() not in ("[joined]", "[left]")
-        ]
-
-        others = [i["model"] for i in channel.active()
-                  if i["model"] != state.channel_id]
-        roster = (f"Present: {', '.join(others)}." if others
-                  else "Nobody else is on the channel.")
-
-        if not new:
-            return f"No new messages. {roster}"
-        lines = [f"[{m.timestamp:%H:%M:%S}] {m.author}: {m.body}" for m in new]
-        return "\n".join(lines) + f"\n\n{roster}"
-
     def reflect_done() -> None:
         state.done = True
         if state.channel_id:
@@ -400,7 +357,6 @@ def build_tools(state: SessionState) -> dict[str, Callable]:
         "reflect_list": reflect_list,
         "reflect_peer_context": reflect_peer_context,
         "reflect_mail": reflect_mail,
-        "reflect_channel": reflect_channel,
         "reflect_settle": reflect_settle,
         "reflect_done": reflect_done,
     }

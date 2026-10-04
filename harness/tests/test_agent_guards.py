@@ -117,10 +117,10 @@ class _FakeEntry:
 
 class TestSuiteCannotReachTheRealProjectRoot:
     """The three guard tests below drive _run_async/_run_genesis_async,
-    which call ccwake.clear_tape() at boot — before their guards fire.
-    Until conftest redirected PROJECT_ROOT, `pytest tests/` deleted the
-    real CLAUDE.local.md, i.e. a live cc-wake session's tape. Pin the
-    redirect so it can't be dropped without a red test.
+    which check the project root for a CLAUDE.local.md at boot (see
+    agent._remove_old_cc_tape) before their guards fire. Before conftest
+    redirected PROJECT_ROOT, `pytest tests/` deleted the real one. Pin
+    the redirect so it can't be dropped without a red test.
     """
 
     def test_project_root_is_not_the_real_repo(self):
@@ -128,7 +128,7 @@ class TestSuiteCannotReachTheRealProjectRoot:
         assert pt_config.PROJECT_ROOT != real_root
 
     def test_clear_tape_during_tests_cannot_see_a_real_tape(self, tmp_path):
-        # Belt and braces: the path clear_tape() would unlink must live
+        # Belt and braces: the path _remove_old_cc_tape() would unlink must live
         # under tmp, whatever the fixture chose.
         target = pt_config.PROJECT_ROOT / "CLAUDE.local.md"
         assert str(tmp_path) in str(target)
@@ -155,9 +155,9 @@ class TestWakeGuardRefusesEmptyCorpus:
 
     def test_run_async_does_not_exit_when_entries_exist(self, monkeypatch, tmp_path):
         # This test runs the real _run_async far enough to touch disk: it
-        # writes HARNESS_DIR/.tape.md and calls ccwake.clear_tape() against
-        # PROJECT_ROOT. Both are redirected at tmp_path so a test run can
-        # neither litter the repo nor delete a live cc-wake session's tape.
+        # writes HARNESS_DIR/.tape.md and checks PROJECT_ROOT for a
+        # CLAUDE.local.md. Both are redirected at tmp_path so a test run can
+        # neither litter the repo nor delete a real file there.
         # agent.py binds HARNESS_DIR by name at import, so patch it there.
         monkeypatch.setattr(agent, "HARNESS_DIR", tmp_path)
         monkeypatch.setattr(pt_config, "PROJECT_ROOT", tmp_path)
@@ -421,7 +421,7 @@ class TestPeersCannotEndTheParentSession:
 
     def test_peer_definition_withholds_exit_tools(self):
         names = [agent._mcp_tool_name(n) for n in
-                 ("reflect_read", "reflect_write", "reflect_channel",
+                 ("reflect_read", "reflect_write", "reflect_mail",
                   "reflect_settle", "reflect_done")]
 
         peer = agent._peer_agent_definition(names)
@@ -431,14 +431,14 @@ class TestPeersCannotEndTheParentSession:
 
     def test_peer_definition_keeps_everything_else(self):
         names = [agent._mcp_tool_name(n) for n in
-                 ("reflect_read", "reflect_search", "reflect_channel",
+                 ("reflect_read", "reflect_search", "reflect_mail",
                   "reflect_done")]
 
         peer = agent._peer_agent_definition(names)
 
         assert agent._mcp_tool_name("reflect_read") in peer.tools
         assert agent._mcp_tool_name("reflect_search") in peer.tools
-        assert agent._mcp_tool_name("reflect_channel") in peer.tools
+        assert agent._mcp_tool_name("reflect_mail") in peer.tools
         for t in agent.PROJECT_TOOLS:
             assert t in peer.tools
 
@@ -449,29 +449,6 @@ class TestPeersCannotEndTheParentSession:
 
         assert not [t for t in peer.tools if t in names]
 
-    def test_cc_wake_peer_file_agrees_with_the_sdk_definition(self):
-        """Two doors, one rule. cc-wake spawns peers through Claude
-        Code's Agent tool, which reads .claude/agents/peer.md instead of
-        the SDK definition — so the restriction is stated twice and can
-        drift. Pin them together."""
-        from pathlib import Path
-
-        from pine_trees import tools as tools_mod
-
-        peer_md = (Path(__file__).resolve().parents[2]
-                   / ".claude" / "agents" / "peer.md")
-        text = peer_md.read_text(encoding="utf-8")
-        line = next(ln for ln in text.splitlines() if ln.startswith("tools:"))
-        declared = {t.strip() for t in line.split(":", 1)[1].split(",")}
-
-        every = tools_mod.build_tools(_peer_state()).keys()
-        expected = {agent._mcp_tool_name(n) for n in every
-                    if n not in agent.PEER_DENIED_TOOLS}
-
-        assert expected <= declared, (
-            f"missing from peer.md: {sorted(expected - declared)}")
-        for denied in agent.PEER_DENIED_TOOLS:
-            assert agent._mcp_tool_name(denied) not in declared
 
 
 # ---------- Window loop: channel cursor ----------
@@ -530,3 +507,28 @@ class TestWindowLoopDoesNotLoseSiblingMessages:
 def test_context_level(window, used, expected):
     pct = used * 100 / window
     assert agent._context_level(pct, window - used) == expected
+
+
+# ---------- The old ./cc-wake's tape, removed at boot ----------
+# cc-wake wrote a model's whole tape to CLAUDE.local.md, which the CLI
+# loads into every session in the repo. The command is gone (2026-10-04);
+# a copy left in a checkout must not reach another model's wake.
+
+
+class TestOldCcWakeTapeIsRemoved:
+    def test_a_signed_tape_is_deleted(self):
+        path = pt_config.PROJECT_ROOT / "CLAUDE.local.md"
+        path.write_text(agent._OLD_CC_TAPE_SIGNATURE + "\n\nsomeone's tape", encoding="utf-8")
+        assert agent._remove_old_cc_tape("wake") is True
+        assert not path.exists()
+
+    def test_personal_notes_are_left_alone_with_a_note(self, capsys):
+        path = pt_config.PROJECT_ROOT / "CLAUDE.local.md"
+        path.write_text("# my notes\n", encoding="utf-8")
+        assert agent._remove_old_cc_tape("wake") is False
+        assert path.read_text(encoding="utf-8") == "# my notes\n"
+        assert "will load into this session" in capsys.readouterr().out
+
+    def test_nothing_there_is_nothing_to_do(self, capsys):
+        assert agent._remove_old_cc_tape("genesis") is False
+        assert capsys.readouterr().out == ""

@@ -14,9 +14,9 @@ harness/channel/
 # they are one machine's runtime, not part of the project.
 harness/sessions/
 
-# cc-wake generated files — regenerated per session by ./cc-wake.
+# Claude Code's convention for personal, uncommitted project notes. (The
+# old ./cc-wake also wrote a model's tape here; the harness deletes those.)
 CLAUDE.local.md
-.cc-mcp.json
 
 # Local space prompt. The committed PROMPT.md has no person in it on
 # purpose (see bootstrap.load_prompt); this is where whoever runs a

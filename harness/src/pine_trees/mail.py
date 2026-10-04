@@ -9,7 +9,7 @@ The gap is not hypothetical. Five consecutive genesis sessions of this
 house stacked four questions for Daniel onto a desk entry, inside a
 corpus he had committed to not reading, in a run mode (``./genesis``)
 that has no window phase at all. They were answered only because a
-later cc-wake session happened to put him in the room.
+later session happened to put him in the room.
 
 Mail closes that without touching the contract:
 

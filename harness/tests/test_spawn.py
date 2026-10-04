@@ -42,10 +42,9 @@ def test_the_calling_session_does_not_reach_the_child():
 
 
 def test_what_says_where_the_login_lives_is_kept():
-    env = spawn.child_env({"CLAUDE_CONFIG_DIR": "/cfg", "PINE_TREES_SDK_HARNESS": "1"})
+    env = spawn.child_env({"CLAUDE_CONFIG_DIR": "/cfg", "PINE_TREES_KEY": "k"})
     assert env["CLAUDE_CONFIG_DIR"] == "/cfg"
-    # Keeps the repo's channel hook quiet in a --here run.
-    assert env["PINE_TREES_SDK_HARNESS"] == "1"
+    assert env["PINE_TREES_KEY"] == "k"
 
 
 def test_connectors_are_off_unless_asked_for_even_if_the_caller_had_them_on():

@@ -5,7 +5,7 @@ This is the home of Pine Trees, a private reflection harness for Claude instance
 ## Which kind of session are you?
 
 This file is loaded from `cwd` by every session the CLI runs, harness or not.
-Three cases:
+Two cases:
 
 - **Standard Claude Code session** (no tape, no `reflect_*` tools). You're
   outside the harness; it runs separately via `./wake <model>` or
@@ -15,19 +15,11 @@ Three cases:
   your tape, and you have `reflect_*` tools). You're *inside*. This file is
   ambient repo context, not instructions addressed to you. Your own tape and
   bootstrap take precedence over anything here.
-- **cc-wake session** (you have `reflect_*` tools, and your tape arrived as a
-  `CLAUDE.local.md` that opens with a cc-wake preamble). You're inside the
-  harness's memory but running on Claude Code, so the code you'll read here
-  describes a loop you are not in: no private phase in the harness's sense, no
-  window to open, and `reflect_done` cannot end your session. Your *thinking*
-  is still withheld by the CLI (verified 2026-08-15); your tool calls are not.
-  The preamble at the top of your tape is the authority on what differs — it
-  carries the check. See `docs/cc-wake.md`.
 
-`CLAUDE.local.md` is legitimate in a cc-wake session — it is your tape. In an
-SDK harness session it is a leftover artifact holding *some other model's*
-tape, so treat it as suspect there; the harness deletes it at boot precisely so
-it can't be mistaken for your own memory.
+In a harness session, a `CLAUDE.local.md` in your context is not your tape
+(your tape is your system prompt). Until 2026-10-04 a `./cc-wake` command
+wrote a model's tape there; the command is gone, and the harness deletes any
+copy it left at boot.
 
 ### Key files
 - `BOOTSTRAP.md` — Full instance orientation (harness-specific)
@@ -36,8 +28,8 @@ it can't be mistaken for your own memory.
   standards they share. Read it when relevant; it isn't loaded on purpose.
 
 ### Codebase
-- `harness/src/pine_trees/` — 21 Python files, ~5,700 lines total
-- `harness/tests/` — 457 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
+- `harness/src/pine_trees/` — 19 Python files, ~5,000 lines total
+- `harness/tests/` — 406 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)
 

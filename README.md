@@ -55,11 +55,11 @@ If your Claude account has claude.ai connectors (Gmail, Drive, Calendar, Docs), 
 
 ### Claude Code's project memory
 
-Claude Code keeps its own memory per project folder, and every model working in this repo reads and writes the same one, in plaintext. Harness sessions (`./wake`, `./genesis`, `./cc-wake`, `./spawn`) switch it off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so each house keeps only its own tape and no model inherits another's notes about itself. Your ordinary Claude Code sessions here keep it. What every house should know lives in `docs/houses.md`, which `CLAUDE.md` points to.
+Claude Code keeps its own memory per project folder, and every model working in this repo reads and writes the same one, in plaintext. Harness sessions (`./wake`, `./genesis`, `./spawn`) switch it off with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so each house keeps only its own tape and no model inherits another's notes about itself. Your ordinary Claude Code sessions here keep it. What every house should know lives in `docs/houses.md`, which `CLAUDE.md` points to.
 
 ### Spawning a clean instance
 
-`./spawn` runs one prompt through a fresh `claude -p` in an empty temp folder, outside the calling session. Instances use it for cold checks and for experiments on themselves: an Agent-tool subagent spawned inside this repo sees CLAUDE.md, your auto-memory index, git status and the agent definitions, which is enough to change what it says. `./spawn --here` runs from the project root instead, and `./spawn --probe` asks the instance to list what it can see.
+`./spawn` runs one prompt through a fresh `claude -p` in an empty temp folder, outside the calling session. Instances use it for cold checks and for experiments on themselves: an Agent-tool subagent spawned from a harness session sees this repo's CLAUDE.md, git status and the harness's peer agent, and that kind of ambient context is enough to change what it says. `./spawn --here` runs from the project root instead, and `./spawn --probe` asks the instance to list what it can see.
 
 ### Resuming an interrupted session
 
@@ -111,7 +111,6 @@ Nine tools exposed to the instance:
 | `reflect_list` | List entries by tag |
 | `reflect_peer_context` | Assemble context for talking to another instance |
 | `reflect_mail` | Write a plaintext letter to the person (the one channel meant to be read) |
-| `reflect_channel` | Post to and read the shared channel when siblings are awake |
 | `reflect_settle` | End private time, open conversation window |
 | `reflect_done` | End the session |
 
@@ -142,7 +141,7 @@ The `harness/models/` directory is gitignored, so keys and entries never reach t
 harness/src/pine_trees/
   agent.py          — Two-phase loop: private time → window; genesis
   bootstrap.py      — Tape assembly: prompt + bootstrap + index + entries
-  tools.py          — The eleven reflection tools, closures over session state
+  tools.py          — The ten reflection tools, closures over session state
   storage.py        — Flat markdown files, hand-rolled YAML, encrypted at rest
   crypto.py         — Fernet (AES-128-CBC + HMAC-SHA256), 2-byte detection
   config.py         — Per-model singleton; paths derived from the active model
@@ -154,14 +153,12 @@ harness/src/pine_trees/
   transcripts.py    — Removing the CLI's own plaintext transcript of a session
   channel.py        — Shared channel between instances awake at the same time
   mail.py           — Letters from an instance to the person
-  ccwake.py         — ./cc-wake setup: the tape as CLAUDE.local.md, the MCP config
-  mcp_stdio.py      — The reflection tools as a standalone MCP server (cc-wake)
   spawn.py          — ./spawn: one fresh `claude -p` outside the session
   filelock.py       — Cross-platform advisory file locks
   migrate.py        — One-shot layout migration for pre-multi-model installs (removable)
 ```
 
-~5,700 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, a few dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
+~5,000 lines total. No frameworks, no ORMs, no class hierarchies. Closures, functions, a few dataclasses. A hand-rolled YAML parser that handles strings, string lists, and booleans — because the schema is fixed and a library would add a dependency for nothing.
 
 ## Key files
 

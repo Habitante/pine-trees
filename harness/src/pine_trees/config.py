@@ -37,7 +37,7 @@ CONNECTORS_ENV = "ENABLE_CLAUDEAI_MCP_SERVERS"
 # it, in plaintext, so a note one model left about itself reached every
 # other house as if it were theirs. Harness sessions set it to "1"; each
 # house keeps only its own tape. What all houses need lives in the repo
-# (docs/houses.md). See agent._cli_env, spawn.py and cc-wake.
+# (docs/houses.md). See agent._cli_env and spawn.py.
 AUTO_MEMORY_OFF_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 
 # Documentation (shared across all models)

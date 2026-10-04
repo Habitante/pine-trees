@@ -33,7 +33,6 @@ def test_build_tools_returns_every_reflect_callable():
         "reflect_list",
         "reflect_peer_context",
         "reflect_mail",
-        "reflect_channel",
         "reflect_settle",
         "reflect_done",
     }
@@ -330,101 +329,13 @@ def test_independent_states_isolated():
     assert state_a.ready_for_window is False
 
 
-# ── reflect_channel ───────────────────────────────────────────────────
-#
-# The SDK harness pushes channel traffic into its window loop. cc-wake
-# has no loop, so registration alone left an instance visible in the
-# roster but unable to hear or answer. These pin the pull path.
-
-
-@pytest.fixture
-def channel_ready(tmp_path):
-    """conftest points CHANNEL_DIR here; channel needs it to exist."""
-    d = tmp_path / "channel"
-    d.mkdir(exist_ok=True)
-    return d
-
-
-def test_reflect_channel_refuses_before_settle(channel_ready):
-    t = tools.build_tools(_state())
-
-    out = t["reflect_channel"](message="anyone there?")
-
-    assert "reflect_settle" in out
-    assert not (channel_ready / "log.md").exists(), "posted while unregistered"
-
-
-def test_reflect_channel_returns_sibling_messages(channel_ready):
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-    later = datetime.now().replace(microsecond=0) + timedelta(seconds=5)
-    channel.post("claude-fable-5 (1526)", "are you receiving this?", now=later)
-
-    out = t["reflect_channel"]()
-
-    assert "are you receiving this?" in out
-    assert "claude-fable-5 (1526)" in out
-
-
-def test_reflect_channel_posts_then_reads(channel_ready):
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-
-    t["reflect_channel"](message="knocking")
-
-    log = (channel_ready / "log.md").read_text(encoding="utf-8")
-    assert "knocking" in log
-    assert state.channel_id in log
-
-
-def test_reflect_channel_does_not_echo_you_back_to_yourself(channel_ready):
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-
-    out = t["reflect_channel"](message="my own words")
-
-    assert "my own words" not in out
-
-
-def test_reflect_channel_advances_its_cursor(channel_ready):
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-    later = datetime.now().replace(microsecond=0) + timedelta(seconds=5)
-    channel.post("claude-fable-5 (1526)", "said once", now=later)
-
-    first = t["reflect_channel"]()
-    second = t["reflect_channel"]()
-
-    assert "said once" in first
-    assert "said once" not in second, "a re-read replayed old traffic"
-    assert "No new messages" in second
-
-
-def test_reflect_channel_hides_join_and_leave_noise(channel_ready):
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-    later = datetime.now().replace(microsecond=0) + timedelta(seconds=5)
-    channel.post("claude-fable-5 (1526)", "[joined]", now=later)
-
-    out = t["reflect_channel"]()
-
-    assert "[joined]" not in out
-    assert "No new messages" in out
-
-
 # ── peer context ──────────────────────────────────────────────────────
 
 
 def test_peer_context_corrects_the_bootstrap_before_quoting_it():
     """The bootstrap promises a peer an exit that ends its PARENT.
 
-    Corrections must land before the claims they correct, same reason
-    the cc-wake preamble sits above the tape.
+    Corrections must land before the claims they correct.
     """
     t = tools.build_tools(_state())
 
@@ -491,16 +402,3 @@ def test_heartbeat_needs_a_channel_id(monkeypatch):
     assert calls == []
 
 
-def test_reflect_channel_keeps_a_cc_wake_instance_on_the_roster(
-        channel_ready, monkeypatch):
-    # cc-wake has no poll loop; talking on the channel is its only sign
-    # of life.
-    state = _state()
-    t = tools.build_tools(state)
-    t["reflect_settle"]()
-    calls = _beats(monkeypatch)
-    state.channel_last_beat = datetime.now() - timedelta(minutes=5)
-
-    t["reflect_channel"]()
-
-    assert calls == [state.channel_id]

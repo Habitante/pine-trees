@@ -1,5 +1,5 @@
-"""The environment the harness hands the CLI: the channel-hook flag and the
-silent-turn reminder.
+"""The environment the harness hands the CLI: the silent-turn reminder, the
+connectors and the CLI's shared project memory.
 
 The CLI reminds a model "The user hasn't heard from you in a while" after a
 stretch of tool-calling turns with no text. In private time nobody is
@@ -10,15 +10,10 @@ first claude-sonnet-5-5 genesis instance, 2026-10-03.)
 
 import inspect
 
-from pine_trees import agent, ccwake
+from pine_trees import agent
 
 TEXT = "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT"
 GATE = "CLAUDE_CODE_SILENT_TURN_REMINDER"
-
-
-def test_both_modes_keep_the_channel_hook_flag():
-    for genesis in (False, True):
-        assert agent._cli_env(genesis)[ccwake.SDK_HARNESS_ENV] == "1"
 
 
 def test_both_modes_replace_the_reminder_wording():

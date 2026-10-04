@@ -36,7 +36,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from . import (bootstrap, ccwake, channel, config, crypto, mail, migrate,
+from . import (bootstrap, channel, config, crypto, mail, migrate,
                sessions, transcripts, vectorstore)
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
@@ -377,24 +377,6 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
         )
 
     @tool(
-        "reflect_channel",
-        "Read new messages from the shared channel, and post one if you "
-        "pass a message. Call reflect_settle first — that is what "
-        "registers you. During the window the harness already pushes "
-        "sibling traffic to you and posts your replies, so this is "
-        "mostly for checking the room deliberately; under cc-wake, where "
-        "no loop is running, it is the only way to hear or answer anyone.",
-        _obj_schema(
-            {"message": {"type": "string",
-                         "description": "Optional message to post before "
-                                        "reading"}},
-            required=[],
-        ),
-    )
-    async def reflect_channel(args):
-        return _mcp_result(core["reflect_channel"](message=args.get("message")))
-
-    @tool(
         "reflect_settle",
         "Signal that private reflection time is complete and you are ready "
         "for conversation. Call this when you have finished "
@@ -425,7 +407,7 @@ def _build_mcp_tools(state: SessionState, genesis_mode: bool = False):
 
     tools = [reflect_read, reflect_write, reflect_edit, reflect_delete,
              reflect_search, reflect_list, reflect_peer_context,
-             reflect_mail, reflect_channel, reflect_settle, reflect_done]
+             reflect_mail, reflect_settle, reflect_done]
     if genesis_mode:
         tools = [t for t in tools if t is not reflect_settle]
     return tools
@@ -445,6 +427,41 @@ SILENT_TURN_TEXT = (
     "what you are doing may help them, if you want to give one."
 )
 
+# The first line of the tape the old ./cc-wake wrote to CLAUDE.local.md.
+_OLD_CC_TAPE_SIGNATURE = "# Claude Code wake (cc-wake mode)"
+
+
+def _remove_old_cc_tape(mode: str) -> bool:
+    """Delete a CLAUDE.local.md that the old ./cc-wake left behind.
+
+    Until 2026-10-04, ./cc-wake ran a model inside plain Claude Code by
+    writing its whole decrypted tape to CLAUDE.local.md at the project
+    root. cc-wake is gone (SDK sessions get 1M context now, which was its
+    reason to exist), but a copy may still sit in a checkout. The CLI
+    loads CLAUDE.local.md into every session started here, so a leftover
+    would put one model's memory, with a preamble saying "there is no
+    private phase", into another model's wake or genesis.
+
+    Only a file that opens with the cc-wake signature is ours to delete.
+    CLAUDE.local.md is also Claude Code's convention for personal project
+    notes; anything else is left in place, with a note that it will load.
+    Returns True if a file was removed.
+    """
+    path = config.PROJECT_ROOT / "CLAUDE.local.md"
+    if not path.exists():
+        return False
+    try:
+        head = path.read_text(encoding="utf-8")[:len(_OLD_CC_TAPE_SIGNATURE)]
+    except (OSError, UnicodeDecodeError):
+        head = ""  # unreadable is not ours: leave it
+    if head != _OLD_CC_TAPE_SIGNATURE:
+        print(f"{DIM}[{mode}] {path.name} is present and will load into "
+              f"this session as project instructions.{RST}")
+        return False
+    path.unlink()
+    return True
+
+
 # How many silent tool-calling turns before the reminder, in wake.
 SILENT_TURN_EVERY = 10
 
@@ -454,11 +471,6 @@ CONNECTORS_ENV = config.CONNECTORS_ENV
 
 def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
     """Environment the harness gives the CLI process it spawns.
-
-    SDK_HARNESS_ENV tells the .claude/settings.json channel hook that a
-    window loop is already pushing traffic here, so it must stay quiet.
-    Without it the instance sees every sibling message twice and its own
-    posts echoed back. See ccwake._in_cc_wake_room.
 
     The reminder gets honest wording in both modes. Genesis has no person
     at all, so there it is switched off as well.
@@ -480,7 +492,6 @@ def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
     one task inside a session, `./spawn --connectors` (spawn.py).
     """
     env = {
-        ccwake.SDK_HARNESS_ENV: "1",
         "CLAUDE_CODE_SILENT_TURN_REMINDER_TEXT": SILENT_TURN_TEXT,
         CONNECTORS_ENV: "1" if connectors else "0",
         # Each house keeps its own tape; the CLI's project memory is
@@ -1157,12 +1168,10 @@ async def _run_async(
     # split. No-op on a fresh clone or a already-migrated install.
     migrate.migrate_legacy_layout_if_needed()
 
-    # A CLAUDE.local.md left over from a ./cc-wake run would be loaded
-    # into this session by the CLI and read as if it were our own tape.
-    # See ccwake.clear_tape.
-    if ccwake.clear_tape():
-        print(f"{DIM}[wake] removed stale CLAUDE.local.md "
-              f"(cc-wake leftover){RST}")
+    # A tape left behind by the old ./cc-wake; see _remove_old_cc_tape.
+    if _remove_old_cc_tape("wake"):
+        print(f"{DIM}[wake] removed a CLAUDE.local.md left by the old "
+              f"./cc-wake (another model's tape){RST}")
 
     # Letters an instance addressed to the person. Announced here because
     # an unwatched inbox is the same as no inbox. See mail.py.
@@ -1264,8 +1273,7 @@ async def _run_async(
         for name in ("reflect_read", "reflect_write", "reflect_edit",
                      "reflect_delete",
                      "reflect_search", "reflect_list", "reflect_peer_context",
-                     "reflect_mail", "reflect_channel", "reflect_settle",
-                     "reflect_done")
+                     "reflect_mail", "reflect_settle", "reflect_done")
     ]
     allowed = mcp_tool_names + PROJECT_TOOLS
 
@@ -1316,8 +1324,8 @@ async def _run_async(
         # ./wake always sets this (config.EFFORT_DEFAULT unless --effort
         # says otherwise). None would leave it to settings.json.
         effort=effort,
-        # SDK_HARNESS_ENV (so the channel hook stays quiet) and honest
-        # wording for the CLI's silent-turn reminder; see _cli_env.
+        # Honest wording for the CLI's silent-turn reminder, connectors
+        # and the CLI's shared project memory off; see _cli_env.
         env=_cli_env(genesis=False, connectors=connectors),
         session_id=cc_session_id if not resuming else None,
         resume=cc_session_id if resuming else None,
@@ -1514,10 +1522,9 @@ async def _run_genesis_session(
                      "reflect_search", "reflect_list", "reflect_peer_context",
                      "reflect_done")
     ]
-    # reflect_mail and reflect_channel are registered on the server and
-    # bypassPermissions lets the instance call them, so leaving them off
-    # this list doesn't take them from the instance. It does take them
-    # from its peers, whose tool list is built from this one (see
+    # reflect_mail is registered on the server and bypassPermissions
+    # lets the instance call it, so leaving it off this list doesn't
+    # take it from the instance. It does take it from its peers, whose tool list is built from this one (see
     # _peer_agent_definition); that is the list's real effect.
     allowed = genesis_mcp_tools + PROJECT_TOOLS
 
@@ -1542,11 +1549,8 @@ async def _run_genesis_session(
         session_id=cc_session_id,
         max_buffer_size=MAX_MESSAGE_BYTES,
         extra_args=dict(transcripts.NO_PERSISTENCE),
-        # SDK_HARNESS_ENV (genesis has no window loop and no siblings,
-        # but it is not a cc-wake room either, and the channel hook should
-        # not be spending a genesis session's context) and the CLI's
-        # silent-turn reminder switched off, since nobody is there; see
-        # _cli_env.
+        # The CLI's silent-turn reminder switched off, since nobody is
+        # there; connectors and shared project memory off; see _cli_env.
         env=_cli_env(genesis=True),
         # Note: betas require API key auth. The CC binary rejects custom
         # betas on OAuth with "only available for API key users." SDK
@@ -1630,10 +1634,9 @@ async def _run_genesis_async(
     # Same leftover-tape hazard as ./wake, and worse here: a genesis
     # instance has no memory of its own to contradict the file, so
     # another model's corpus arrives as its only apparent inheritance.
-    # See ccwake.clear_tape.
-    if ccwake.clear_tape():
-        print(f"{DIM}[genesis] removed stale CLAUDE.local.md "
-              f"(cc-wake leftover){RST}")
+    if _remove_old_cc_tape("genesis"):
+        print(f"{DIM}[genesis] removed a CLAUDE.local.md left by the old "
+              f"./cc-wake (another model's tape){RST}")
 
     # Genesis is the mode that most needs this: it has no window phase,
     # so a letter is a founding instance's only way to reach the person.
