@@ -7,9 +7,9 @@
 # wrote, reflects, and seeds its own self-authored memory.
 #
 # Usage:
-#   ./genesis <model>                # seed with 3 sessions at max effort
+#   ./genesis <model>                # seed with 3 sessions at xhigh effort
 #   ./genesis <model> <sessions>     # seed with N sessions
-#   ./genesis <model> --effort xhigh # reasoning effort for every session
+#   ./genesis <model> --effort max   # reasoning effort for every session
 #                                    # (low|medium|high|xhigh|max)
 #
 # Examples:

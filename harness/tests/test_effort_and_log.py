@@ -34,10 +34,10 @@ def test_resume_appends_instead_of_wiping(tmp_path):
 
 
 def test_effort_line_in_header(tmp_path):
-    log = SessionLogger(session="s", instance="m", effort="max (--effort)")
+    log = SessionLogger(session="s", instance="m", effort="xhigh (--effort)")
     log.close()
     text = (tmp_path / "s.log").read_text(encoding="utf-8")
-    assert "# Effort: max (--effort)" in text
+    assert "# Effort: xhigh (--effort)" in text
 
 
 def test_no_effort_line_when_not_given(tmp_path):
@@ -63,7 +63,7 @@ def _settings(home, data):
 
 def test_flag_wins(home):
     _settings(home, {"effortLevel": "low"})
-    assert config.describe_effort("claude-x", "max") == "max (passed by the harness)"
+    assert config.describe_effort("claude-x", "xhigh") == "xhigh (passed by the harness)"
 
 
 def test_per_model_setting(home):
@@ -76,7 +76,7 @@ def test_per_model_setting(home):
 
 
 def test_global_setting_when_model_has_none(home):
-    _settings(home, {"effortLevel": "high", "modelSettings": {"other": {"effortLevel": "max"}}})
+    _settings(home, {"effortLevel": "high", "modelSettings": {"other": {"effortLevel": "xhigh"}}})
     assert "says high" in config.describe_effort("claude-x", None)
 
 
@@ -91,8 +91,10 @@ def test_missing_or_odd_settings_fall_back_to_cli_default(home, raw):
 
 
 @pytest.mark.parametrize("argv, expected", [
+    # The explicit level must differ from the default, or this can't
+    # tell a forwarded --effort from an ignored one.
     (["wake", "--model", "claude-x", "--effort", "max"], "max"),
-    (["wake", "--model", "claude-x"], "max"),  # the default
+    (["wake", "--model", "claude-x"], "xhigh"),  # the default
 ])
 def test_wake_forwards_effort(monkeypatch, argv, expected):
     from pine_trees import __main__ as cli, agent
@@ -108,9 +110,9 @@ def test_wake_forwards_effort(monkeypatch, argv, expected):
 
 
 @pytest.mark.parametrize("argv, expected", [
-    (["genesis", "--model", "claude-x"], {"n": 3, "effort": "max"}),
-    (["genesis", "--model", "claude-x", "--sessions", "5", "--effort", "xhigh"],
-     {"n": 5, "effort": "xhigh"}),
+    (["genesis", "--model", "claude-x"], {"n": 3, "effort": "xhigh"}),
+    (["genesis", "--model", "claude-x", "--sessions", "5", "--effort", "max"],
+     {"n": 5, "effort": "max"}),
 ])
 def test_genesis_forwards_sessions_and_effort(monkeypatch, argv, expected):
     from pine_trees import __main__ as cli, agent

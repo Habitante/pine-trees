@@ -71,9 +71,9 @@ def test_connectors_drop_the_strict_mcp_flag():
 
 
 def test_model_and_effort_are_passed_through():
-    args = spawn.cli_args(model="claude-opus-5-5", effort="max")
+    args = spawn.cli_args(model="claude-opus-5-5", effort="xhigh")
     assert args[args.index("--model") + 1] == "claude-opus-5-5"
-    assert args[args.index("--effort") + 1] == "max"
+    assert args[args.index("--effort") + 1] == "xhigh"
     assert "--model" not in spawn.cli_args() and "--effort" not in spawn.cli_args()
 
 

@@ -161,7 +161,7 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # What ./wake and ./genesis ask for when --effort is not given. The CLI
 # downgrades it for models that don't support it; $CLAUDE_EFFORT shows
 # the result.
-EFFORT_DEFAULT = "max"
+EFFORT_DEFAULT = "xhigh"
 
 # How many private sessions ./genesis runs when not told otherwise.
 GENESIS_SESSIONS_DEFAULT = 3
