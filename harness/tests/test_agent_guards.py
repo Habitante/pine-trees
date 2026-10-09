@@ -487,6 +487,84 @@ class TestWindowLoopDoesNotLoseSiblingMessages:
             assert m.group(1).startswith("channel.Cursor("), m.group(0)
 
 
+# ---------- Window loop: channel failures don't end the session ----------
+
+
+class TestWindowSurvivesChannelFailures:
+    """2026-10-09: a window was left open for a weekend, relayed to the
+    person's phone through the channel, with nobody there to restart it.
+    Any exception from channel I/O in the poller used to end the session.
+    """
+
+    def _state(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(pt_config, "CHANNEL_DIR", tmp_path / "channel")
+        return SessionState(instance="claude-opus-5-5", session="s",
+                            date="d", context="c",
+                            channel_id="claude-opus-5-5 (0902)",
+                            channel_cursor=channel.Cursor(
+                                datetime(2026, 10, 9, 9, 0)))
+
+    @staticmethod
+    def _boom(*args, **kwargs):
+        raise PermissionError(32, "The process cannot access the file")
+
+    def test_a_failed_read_is_survived_and_delivered_next_poll(
+            self, tmp_path, monkeypatch):
+        state = self._state(tmp_path, monkeypatch)
+        channel.post("daniel (dispatch)", "hello",
+                     now=datetime(2026, 10, 9, 9, 30))
+        real_read = channel.read
+        monkeypatch.setattr(channel, "read", self._boom)
+
+        got, known = agent._poll_once(state, set())
+        assert got == []
+
+        monkeypatch.setattr(channel, "read", real_read)
+        got, known = agent._poll_once(state, known)
+        assert [m.body for m in got] == ["hello"]
+
+    def test_a_failed_roster_still_delivers_messages(self, tmp_path,
+                                                      monkeypatch):
+        state = self._state(tmp_path, monkeypatch)
+        channel.post("daniel (dispatch)", "hello",
+                     now=datetime(2026, 10, 9, 9, 30))
+        monkeypatch.setattr(channel, "active", self._boom)
+
+        got, known = agent._poll_once(state, {"claude-opus-4-6 (0900)"})
+
+        # No false [left] for a sibling we simply couldn't see.
+        assert [m.body for m in got] == ["hello"]
+        assert known == {"claude-opus-4-6 (0900)"}
+
+    def test_a_failed_post_is_retried(self, monkeypatch):
+        monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+        calls = []
+
+        def flaky(*args):
+            calls.append(args)
+            if len(calls) < 3:
+                raise PermissionError(32, "in use")
+            return "posted"
+
+        assert agent._channel_safe("x", flaky, "a", "b", tries=3) == "posted"
+        assert len(calls) == 3
+
+    def test_a_failure_that_persists_returns_none(self, monkeypatch, capsys):
+        monkeypatch.setattr(agent.time, "sleep", lambda s: None)
+        assert agent._channel_safe("posting the reply", self._boom,
+                                   tries=3) is None
+        assert "posting the reply failed" in capsys.readouterr().out
+
+    def test_the_window_makes_no_bare_channel_calls(self):
+        # Every channel call in the window goes through _channel_safe or
+        # _poll_once, so it is passed as a function, never called inline.
+        src = inspect.getsource(agent._window_phase)
+        bare = re.findall(
+            r"(?:channel\.(?:post|read|read_since|active|register|heartbeat)"
+            r"|channel_heartbeat|_relay_human)\(", src)
+        assert bare == []
+
+
 # ---------- Context notes scale with the window ----------
 #
 # The 70%/85% thresholds were tuned for 200k windows. On 1M they fired

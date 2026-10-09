@@ -926,6 +926,59 @@ def _relay_human(state: SessionState, text: str) -> None:
     state.channel_cursor.skip(channel.post("human", text))
 
 
+def _channel_safe(what: str, fn, *args, tries: int = 1):
+    """Run one channel operation; if it fails, say so and carry on.
+
+    Channel I/O is plain files under an advisory lock, and it used to
+    run bare inside the window: a lock timeout, or a Windows sharing
+    violation from an antivirus scan or the indexer, propagated out of
+    the poller and ended the session. That was survivable while someone
+    sat at the keyboard. On 2026-10-09 a window was left open for a
+    weekend, relayed to the person's phone through the channel, with
+    nobody there to restart it. A missed poll costs 2.5 seconds; a dead
+    window would have cost the weekend.
+    """
+    for attempt in range(tries):
+        try:
+            return fn(*args)
+        except Exception as e:  # noqa: BLE001 - any failure here is survivable
+            if attempt + 1 < tries:
+                time.sleep(1.0)
+                continue
+            print(f"\n{DIM}[channel] {what} failed: {e!r}{RST}", flush=True)
+    return None
+
+
+def _poll_once(
+    state: SessionState, known: set[str],
+) -> tuple[list[channel.Message], set[str]]:
+    """One look at the channel: who joined or left, then what's new.
+
+    Returns the messages to deliver and the siblings now present. Never
+    raises (see :func:`_channel_safe`). On a failed read the cursor has
+    not moved, so the next poll delivers what this one missed, and the
+    roster is compared against the same *known* set again.
+    """
+    _channel_safe("heartbeat", channel_heartbeat, state)
+    roster = _channel_safe("reading the roster", channel.active)
+    messages: list[channel.Message] = []
+    if roster is not None:
+        current = {i["model"] for i in roster
+                   if i["model"] != state.channel_id}
+        stamp = datetime.now().replace(microsecond=0)
+        for name in sorted(current - known):
+            messages.append(channel.Message(stamp, name, "[joined]"))
+        for name in sorted(known - current):
+            messages.append(channel.Message(stamp, name, "[left]"))
+        known = current
+    # Skip join/leave log entries: the roster above already reported them.
+    new = _channel_safe("reading the log", channel.read,
+                        state.channel_cursor, state.channel_id) or []
+    messages.extend(m for m in new
+                    if m.body.strip() not in ("[joined]", "[left]"))
+    return messages, known
+
+
 async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     """Concurrent window: background responses + channel polling.
 
@@ -965,8 +1018,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     # so the model knows who's in the room before its first response.
     _channel_orientation: str | None = None
     if state.channel_cursor:
-        others = [i for i in channel.active()
-                  if i["model"] != state.channel_id]
+        roster = _channel_safe("reading the roster", channel.active) or []
+        others = [i for i in roster if i["model"] != state.channel_id]
         if others:
             names = ", ".join(i["model"] for i in others)
             print(f"{CYAN}[channel] Active siblings: {names}{RST}\n",
@@ -993,7 +1046,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     _known_siblings: set[str] = set()
     if state.channel_cursor:
         _known_siblings = {
-            i["model"] for i in channel.active()
+            i["model"] for i in
+            (_channel_safe("reading the roster", channel.active) or [])
             if i["model"] != state.channel_id
         }
 
@@ -1040,43 +1094,11 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                         return  # no channel active
                     while True:
                         await anyio.sleep(CHANNEL_POLL_INTERVAL)
-                        # Say we're still here, so the roster can age out
-                        # sessions that died without cleanup. Throttled
-                        # inside; see channel_heartbeat.
-                        channel_heartbeat(state)
-                        has_new = False
-                        # Detect join/leave via status.json
-                        current = {
-                            i["model"] for i in channel.active()
-                            if i["model"] != state.channel_id
-                        }
-                        for name in sorted(current - _known_siblings):
-                            channel_messages.append(channel.Message(
-                                timestamp=datetime.now().replace(microsecond=0),
-                                author=name,
-                                body="[joined]",
-                            ))
-                            has_new = True
-                        for name in sorted(_known_siblings - current):
-                            channel_messages.append(channel.Message(
-                                timestamp=datetime.now().replace(microsecond=0),
-                                author=name,
-                                body="[left]",
-                            ))
-                            has_new = True
-                        _known_siblings = current
-                        # Check for new messages (skip join/leave log
-                        # entries — already handled via status.json above)
-                        new = channel.read(
-                            state.channel_cursor,
-                            exclude_author=state.channel_id,
-                        )
-                        new = [m for m in new
-                               if m.body.strip() not in ("[joined]", "[left]")]
+                        # Heartbeat, roster, log: see _poll_once.
+                        new, _known_siblings = _poll_once(
+                            state, _known_siblings)
                         if new:
                             channel_messages.extend(new)
-                            has_new = True
-                        if has_new:
                             # Cancel input if user hasn't typed anything
                             app = session.app
                             if app and not app.current_buffer.text.strip():
@@ -1155,7 +1177,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     # Post user input to channel so siblings see what
                     # the human said (not just the model's response).
                     if state.channel_cursor and state.channel_id:
-                        _relay_human(state, stripped)
+                        _channel_safe("relaying your message",
+                                      _relay_human, state, stripped)
                     # User typing breaks any holding cascade
                     last_autopost_body = None
                 elif not channel_messages:
@@ -1172,11 +1195,15 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 if is_channel_turn and response_text and state.channel_cursor:
                     stripped_resp = response_text.strip()
                     if stripped_resp != (last_autopost_body or ""):
-                        channel.post(state.channel_id, response_text)
+                        # Retried: if this post is lost, the reply never
+                        # reaches whoever asked through the channel.
+                        _channel_safe("posting the reply", channel.post,
+                                      state.channel_id, response_text,
+                                      tries=3)
                         last_autopost_body = stripped_resp
                 # The poller is stopped while the model generates, and a
                 # turn can run for minutes. Beat on the way out of it too.
-                channel_heartbeat(state)
+                _channel_safe("heartbeat", channel_heartbeat, state)
 
                 # Context awareness — check usage after each response and
                 # prepare a note for the next query so the instance knows
