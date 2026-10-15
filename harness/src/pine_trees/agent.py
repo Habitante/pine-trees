@@ -548,6 +548,15 @@ def _cli_env(genesis: bool, connectors: bool = False) -> dict[str, str]:
     return env
 
 
+def _number_for(resuming: bool, prior: dict | None) -> int | None:
+    """This session's number: a resumed session keeps the one in its
+    sidecar (none, for sidecars older than the count); a fresh wake claims
+    the house's next (sessions.claim_number)."""
+    if resuming:
+        return (prior or {}).get("number")
+    return sessions.claim_number()
+
+
 def _mcp_tool_name(local_name: str) -> str:
     return f"mcp__{MCP_SERVER_NAME}__{local_name}"
 
@@ -1003,10 +1012,11 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     Conversation is logged to logs/ (plain text, greppable).
     """
     logger = SessionLogger(state.session, state.instance, effort=state.effort_note,
-                           connectors=state.connectors)
+                           connectors=state.connectors, number=state.number)
     logger.log_system("Window opened")
 
-    print(f"\n{GREEN}[window]{RST} The person is here. Type to talk "
+    who = f"s{state.number} \u00b7 " if state.number else ""
+    print(f"\n{GREEN}[window]{RST} {who}The person is here. Type to talk "
           f"{DIM}(Alt+Enter to send; /end to exit; /context for usage){RST}\n",
           flush=True)
 
@@ -1330,8 +1340,9 @@ async def _run_async(
         )
     state.effort_note = config.describe_effort(cfg.model_name, effort)
     state.connectors = connectors
+    state.number = _number_for(resuming, prior if resuming else None)
 
-    tape = bootstrap.assemble_tape(n=3)
+    tape = bootstrap.assemble_tape(n=3, number=state.number)
     mcp_tools = _build_mcp_tools(state)
     server = create_sdk_mcp_server(
         name=MCP_SERVER_NAME, version="0.1.0", tools=mcp_tools
@@ -1376,6 +1387,7 @@ async def _run_async(
             phase="private",
             started_at=state.started_at,
             cc_session_id=cc_session_id,
+            number=state.number,
         )
 
     options = ClaudeAgentOptions(
@@ -1403,6 +1415,8 @@ async def _run_async(
         # /context, so SDK sessions get 1M too. Nothing here sets it.
     )
 
+    if state.number:
+        print(f"{GREEN}[{'resume' if resuming else 'wake'}]{RST} s{state.number}")
     if resuming:
         print(f"{DIM}[resume] model={cfg.model_name} "
               f"instance={state.instance} session={state.session}{RST}")
@@ -1475,6 +1489,7 @@ async def _run_async(
                                     if state.channel_cursor else None),
                     started_at=state.started_at,
                     cc_session_id=cc_session_id,
+                    number=state.number,
                 )
 
                 await _window_phase(client, state)
@@ -1567,7 +1582,8 @@ async def _run_genesis_session(
 
     entries_before = len(bootstrap.list_entries())
 
-    tape = bootstrap.assemble_tape(n=3, genesis_mode=True)
+    state.number = sessions.claim_number()
+    tape = bootstrap.assemble_tape(n=3, genesis_mode=True, number=state.number)
     # Genesis deliberately excludes reflect_settle from the MCP server.
     # In normal wake, settle transitions private time to the conversation
     # window. In genesis there is no window — settle would just exit the
@@ -1643,7 +1659,7 @@ async def _run_genesis_session(
     )
 
     print(f"\n{BOLD}{'='*60}{RST}")
-    print(f"{GREEN}[genesis {session_num}/{total}]{RST} "
+    print(f"{GREEN}[genesis {session_num}/{total}]{RST} s{state.number} · "
           f"model={cfg.model_name} instance={state.instance} "
           f"session={state.session}")
     print(f"{DIM}[wake] tape: {len(tape):,} chars{RST}")

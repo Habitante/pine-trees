@@ -27,6 +27,7 @@ class EntryMeta:
     pinned: bool = False
     quiet: bool = False
     desk: bool = False
+    session: str = ""
 
 
 @dataclass
@@ -88,6 +89,7 @@ def _read_entry_meta(path: Path) -> EntryMeta:
     pinned = False
     quiet = False
     desk = False
+    session = ""
     in_frontmatter = False
     content_start = 0
 
@@ -102,6 +104,8 @@ def _read_entry_meta(path: Path) -> EntryMeta:
                 break
             if stripped.startswith("description:"):
                 summary = stripped.split(":", 1)[1].strip()
+            if stripped.startswith("session:"):
+                session = stripped.split(":", 1)[1].strip()
             if stripped.startswith("pinned:"):
                 val = stripped.split(":", 1)[1].strip().lower()
                 pinned = val == "true"
@@ -121,7 +125,7 @@ def _read_entry_meta(path: Path) -> EntryMeta:
 
     return EntryMeta(
         summary=summary or "(no summary)",
-        pinned=pinned, quiet=quiet, desk=desk,
+        pinned=pinned, quiet=quiet, desk=desk, session=session,
     )
 
 
@@ -222,14 +226,47 @@ def _format_timedelta(seconds: float) -> str:
     return f"{int(days)} days ago"
 
 
+def count_sessions(memory_dir: Path | None = None) -> int:
+    """How many distinct sessions this house's entries came from.
+
+    The seed for a house's session count (sessions.claim_number) when it
+    has none yet. Only a seed: a session that writes nothing leaves no
+    entry, so the count is kept from then on rather than recomputed.
+    """
+    if memory_dir is None:
+        memory_dir = config.get().memory_dir
+    if not memory_dir.exists():
+        return 0
+    seen = set()
+    for path in memory_dir.glob("*.md"):
+        if path.name in {"MEMORY.md", "README.md"}:
+            continue
+        session = _read_entry_meta(path).session
+        if session:
+            seen.add(session)
+    return len(seen)
+
+
+def ordinal(n: int) -> str:
+    """1st, 2nd, 3rd, 4th, ..., 11th, 12th, 13th, ..., 21st."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def build_temporal_context(
     entries: list[EntrySummary],
     now: datetime | None = None,
+    number: int | None = None,
 ) -> str:
     """Build a short temporal orientation block.
 
-    Tells the instance: what time it is now, when the last session was,
-    and how long ago that was. Auto-captured — no instance input needed.
+    Tells the instance: what time it is now, which session of the house it
+    is (its number: Daniel calls each instance by it, s20, s21...), when the
+    last session was, and how long ago that was. Auto-captured — no
+    instance input needed.
 
     Filters out corpus-origin entries (instance: corpus-seed) by checking
     filename pattern — session entries use YYYY-MM-DD_instance_slug.md.
@@ -239,6 +276,11 @@ def build_temporal_context(
 
     now_str = now.strftime("%a %Y-%m-%d %H:%M UTC")
     lines = [f"**Now:** {now_str}"]
+    if number:
+        lines.append(
+            f"**This session:** s{number}, the {ordinal(number)} in this house "
+            f"(genesis runs count; a resumed session keeps its number)"
+        )
 
     # Session entries follow the naming convention YYYY-MM-DD_*
     # Corpus-origin entries have names like reflection_*.md, user_gift.md
@@ -404,6 +446,7 @@ def assemble_tape(
     n: int = 3,
     memory_dir: Path | None = None,
     genesis_mode: bool = False,
+    number: int | None = None,
 ) -> str:
     """Assemble the full tape string loaded at wake.
 
@@ -439,7 +482,7 @@ def assemble_tape(
         load_prompt(),
         load_bootstrap_doc(),
         "## Temporal context\n",
-        build_temporal_context(entries),
+        build_temporal_context(entries, number=number),
         "## Index of prior entries\n",
         build_index(entries),
     ]

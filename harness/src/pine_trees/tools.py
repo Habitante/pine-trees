@@ -54,6 +54,8 @@ class SessionState:
     ready_for_window: bool = False
     done: bool = False
     welcome_message: str | None = None
+    # This house's session number (sessions.claim_number): s20, s21...
+    number: int | None = None
     started_at: datetime = field(default_factory=datetime.now)
     channel_cursor: channel.Cursor | None = None
     channel_id: str | None = None  # e.g. "claude-haiku-4-5 (0642)"

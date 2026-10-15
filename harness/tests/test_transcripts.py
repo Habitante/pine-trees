@@ -234,7 +234,7 @@ def wake(monkeypatch, tmp_path):
     monkeypatch.setattr(agent.crypto, "ensure_key", lambda: b"x" * 44)
     monkeypatch.setattr(bootstrap, "list_entries", lambda: [_FakeEntry()])
     monkeypatch.setattr(bootstrap, "assemble_tape",
-                        lambda n=3, genesis_mode=False: "tape")
+                        lambda n=3, genesis_mode=False, number=None: "tape")
     monkeypatch.setattr(agent, "ClaudeSDKClient", _CliStandIn)
 
     def run(private, window=None):
@@ -362,7 +362,7 @@ class TestGenesis:
         monkeypatch.setattr(agent, "HARNESS_DIR", tmp_path)
         monkeypatch.setattr(bootstrap, "list_entries", lambda: [])
         monkeypatch.setattr(bootstrap, "assemble_tape",
-                            lambda n=3, genesis_mode=False: "tape")
+                            lambda n=3, genesis_mode=False, number=None: "tape")
         monkeypatch.setattr(agent, "ClaudeSDKClient", _CliStandIn)
 
         async def _private(client, state):

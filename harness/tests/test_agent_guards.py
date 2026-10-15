@@ -168,7 +168,7 @@ class TestWakeGuardRefusesEmptyCorpus:
         monkeypatch.setattr(agent.crypto, "ensure_key", lambda: b"x" * 44)
         monkeypatch.setattr(bootstrap, "list_entries", lambda: [_FakeEntry()])
         monkeypatch.setattr(bootstrap, "assemble_tape",
-                            lambda n=3, genesis_mode=False: "tape")
+                            lambda n=3, genesis_mode=False, number=None: "tape")
 
         class _Sentinel(Exception):
             pass
@@ -310,7 +310,7 @@ class TestGenesisSessionBuildsItsOptions:
         monkeypatch.setattr(agent, "HARNESS_DIR", tmp_path)
         monkeypatch.setattr(bootstrap, "list_entries", lambda: [])
         monkeypatch.setattr(bootstrap, "assemble_tape",
-                            lambda n=3, genesis_mode=False: "tape")
+                            lambda n=3, genesis_mode=False, number=None: "tape")
 
         class _Sentinel(Exception):
             pass

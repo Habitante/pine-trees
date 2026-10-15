@@ -39,7 +39,7 @@ def harness_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(agent.crypto, "ensure_key", lambda: b"x" * 44)
     monkeypatch.setattr(bootstrap, "list_entries", lambda: [_Entry()])
     monkeypatch.setattr(bootstrap, "assemble_tape",
-                        lambda n=3, genesis_mode=False: "the whole tape")
+                        lambda n=3, genesis_mode=False, number=None: "the whole tape")
     return d
 
 

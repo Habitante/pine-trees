@@ -16,7 +16,7 @@ class SessionLogger:
     """Logs the window-phase conversation to a dated text file."""
 
     def __init__(self, session: str, instance: str, effort: str | None = None,
-                 connectors: bool = False):
+                 connectors: bool = False, number: int | None = None):
         logs_dir = config.get().logs_dir
         logs_dir.mkdir(parents=True, exist_ok=True)
         self.path = logs_dir / f"{session}.log"
@@ -31,6 +31,8 @@ class SessionLogger:
         else:
             self._write(f"# Pine Trees session: {session}")
             self._write(f"# Instance: {instance}")
+            if number:
+                self._write(f"# Number: s{number}")
             self._write(f"# Started: {datetime.now().isoformat()}")
         # What the harness asked for, not necessarily what ran: the CLI
         # may downgrade for the model. See config.describe_effort.

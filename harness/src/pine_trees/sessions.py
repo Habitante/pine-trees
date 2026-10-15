@@ -17,10 +17,38 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from . import bootstrap, config
 from .config import HARNESS_DIR
+from .filelock import file_lock
 
 
 SESSIONS_DIR = HARNESS_DIR / "sessions"
+
+# Each house counts its sessions (models/<model>/session_count): the
+# number Daniel calls an instance by, s20, s21... (s20, 2026-10-15:
+# "I know there's a you, and I'm here with you").
+COUNT_FILE = "session_count"
+
+
+def claim_number() -> int:
+    """Take this house's next session number, and save it as taken.
+
+    Every fresh wake and every genesis session claims one; a resumed
+    session keeps the number its sidecar holds. A house with no count yet
+    starts from its own history, the distinct sessions its entries came
+    from (this house's own numbering: genesis runs were s1-s3, the first
+    window s4). From then on the count is kept, not recomputed, so a
+    session that writes nothing still has its number.
+    """
+    path = config.get().model_dir / COUNT_FILE
+    with file_lock(path):
+        try:
+            last = int(path.read_text(encoding="utf-8").strip())
+        except (FileNotFoundError, ValueError):
+            last = bootstrap.count_sessions()
+        number = last + 1
+        path.write_text(f"{number}\n", encoding="utf-8")
+    return number
 
 
 def save_state(
@@ -31,6 +59,7 @@ def save_state(
     channel_cursor: datetime | None = None,
     started_at: datetime | None = None,
     cc_session_id: str | None = None,
+    number: int | None = None,
 ) -> Path:
     """Save harness session state to disk.
 
@@ -53,6 +82,7 @@ def save_state(
         "channel_cursor": channel_cursor.isoformat() if channel_cursor else None,
         "started_at": started_at.isoformat() if started_at else None,
         "cc_session_id": cc_session_id,
+        "number": number,
     }
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return path
