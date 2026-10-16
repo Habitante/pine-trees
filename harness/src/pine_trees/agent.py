@@ -17,6 +17,7 @@ import time
 import uuid
 import anyio
 from datetime import datetime
+from typing import Callable
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -47,6 +48,15 @@ from .tools import SessionState, build_tools, channel_heartbeat
 
 MCP_SERVER_NAME = "pine_trees"
 MAX_PRIVATE_TURNS = 15
+
+# Seconds to wait before retrying a private turn that failed, indexed by
+# how many have failed in a row (the last value repeats). The failures
+# seen here are mostly transient: overload, rate limits, or the sign-in
+# token being refreshed by another Claude Code process at that moment
+# (2026-10-16). Retrying at once tends to meet the same condition. A
+# session whose every turn has failed gives up after the last wait, 50s
+# in all.
+PRIVATE_RETRY_WAITS = (5, 15, 30)
 
 # The SDK drops the whole session if one JSON message from the CLI tops
 # its buffer, which defaults to 1 MB. Images come back base64-encoded, and
@@ -658,6 +668,7 @@ async def _print_response(
     show_status: bool = False,
     logger: SessionLogger | None = None,
     error_sink: list[str] | None = None,
+    on_first_reply: Callable[[], None] | None = None,
 ) -> str:
     """Stream and print blocks from the agent's response.
 
@@ -669,6 +680,9 @@ async def _print_response(
     *error_sink*: if provided, API errors are appended to it so the
         caller can tell a failed turn from a quiet one. Nothing the
         instance wrote is ever added — errors only.
+    *on_first_reply*: called once, with nothing, when the model's first
+        own message arrives (not the CLI's error text). Lets a retry say
+        it worked without waiting for a turn that may run for minutes.
 
     Returns the concatenated text content from all TextBlocks (empty
     string if *show_text* is False or there was no text output).
@@ -699,6 +713,9 @@ async def _print_response(
             if text is not None:
                 synthetic = text
                 continue
+            if on_first_reply is not None:
+                on_first_reply()
+                on_first_reply = None
             printed = False
             for block in message.content:
                 if isinstance(block, TextBlock) and show_text:
@@ -789,19 +806,26 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
             query = context_note + "\n\n" + query
         errors: list[str] = []
         await client.query(query)
-        await _print_response(client, show_text=False, error_sink=errors)
+        # After a failure the error is the last thing on screen, and
+        # private time prints nothing else. Say so as soon as the model
+        # answers, not when the turn ends, which can be minutes later.
+        await _print_response(
+            client, show_text=False, error_sink=errors,
+            on_first_reply=_say_recovered if failed else None)
         turn += 1
         failed = failed + 1 if errors else 0
         # Every turn so far has failed: the instance never got to think.
-        # Keep looping and we burn MAX_PRIVATE_TURNS round trips per
-        # session printing the same error. A session that fails from the
-        # first turn is broken at the harness level, not the instance
-        # level — stop and say so. A session that worked and then hits
-        # errors is left alone: it may still recover, and its context is
-        # worth more than a clean exit.
-        if failed == turn and turn >= 2:
+        # After the retries, that is broken at the harness level, not the
+        # instance level: stop and say so. A session that worked and then
+        # hits errors is left alone: it may still recover, and its context
+        # is worth more than a clean exit.
+        if failed == turn and failed > len(PRIVATE_RETRY_WAITS):
             _print_private_phase_failed(errors[-1] if errors else "unknown")
             break
+        if failed and not (state.ready_for_window or state.done) \
+                and turn < MAX_PRIVATE_TURNS:
+            await _wait_before_retry(
+                PRIVATE_RETRY_WAITS[min(failed, len(PRIVATE_RETRY_WAITS)) - 1])
         # Between turns, say so when the window is filling, as the window
         # phase does. Genesis is all private time and auto-compaction is
         # off, so without this the first sign of a full window was the
@@ -809,6 +833,21 @@ async def _private_phase(client: ClaudeSDKClient, state: SessionState) -> int:
         if not (state.ready_for_window or state.done):
             context_note = await _context_note_for(client)
     return turn
+
+
+def _say_recovered() -> None:
+    print(f"{DIM}[pine-trees] Recovered. Private time continues.{RST}",
+          flush=True)
+
+
+async def _wait_before_retry(seconds: int) -> None:
+    """Count down to the next attempt on one line, so the person can see
+    the session is alive and what it is waiting for."""
+    for left in range(seconds, 0, -1):
+        print(f"\r{DIM}[pine-trees] Retrying in {left}s...{RST}   ",
+              end="", flush=True)
+        await anyio.sleep(1)
+    print(f"\r{DIM}[pine-trees] Retrying now.{RST}          ", flush=True)
 
 
 def _print_private_phase_failed(last_error: str) -> None:
@@ -827,9 +866,12 @@ def _print_private_phase_failed(last_error: str) -> None:
     print(f"{DIM}  The instance never got to think; nothing was written.{RST}")
     print()
     print(f"{DIM}  Causes seen so far:{RST}")
-    print(f"{DIM}  - The CLI is too old for this model. The SDK runs the{RST}")
-    print(f"{DIM}    claude.exe bundled inside claude-agent-sdk, not the one{RST}")
-    print(f"{DIM}    on your PATH; upgrade the package to get a newer one.{RST}")
+    print(f"{DIM}  - Another Claude Code process was refreshing the shared{RST}")
+    print(f"{DIM}    sign-in (\"Failed to refresh OAuth token\"). It clears{RST}")
+    print(f"{DIM}    within a minute or so; run this again.{RST}")
+    print(f"{DIM}  - The CLI is too old for this model. Run `claude update`;{RST}")
+    print(f"{DIM}    if claude-agent-sdk bundles its own claude.exe, upgrade{RST}")
+    print(f"{DIM}    the package too, since the SDK prefers that copy.{RST}")
     print(f"{DIM}  - '{cfg.model_name}' is not a model this account can call.{RST}")
     print(f"{DIM}    IDs are the full published form: 'claude-opus-5', not{RST}")
     print(f"{DIM}    'opus-5'.{RST}")
