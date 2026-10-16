@@ -58,6 +58,11 @@ MAX_PRIVATE_TURNS = 15
 # in all.
 PRIVATE_RETRY_WAITS = (5, 15, 30)
 
+# The same for a window turn, which used to end on the error and leave
+# the person to guess what to do. The person is waiting, so after these
+# the window hands the next try back to them instead of going on.
+WINDOW_RETRY_WAITS = (5, 15, 30)
+
 # The SDK drops the whole session if one JSON message from the CLI tops
 # its buffer, which defaults to 1 MB. Images come back base64-encoded, and
 # parallel tool results arrive in one message: on 2026-09-24 two chart
@@ -850,6 +855,45 @@ async def _wait_before_retry(seconds: int) -> None:
     print(f"\r{DIM}[pine-trees] Retrying now.{RST}          ", flush=True)
 
 
+async def _window_turn(client: ClaudeSDKClient, state: SessionState,
+                       query: str, logger: SessionLogger) -> str:
+    """Send one window turn and print the reply; retry after an API error.
+
+    Before 2026-10-16 a failed window turn printed the error and went
+    back to the prompt, and nothing said what to do next. Resending the
+    message would have sent it twice: the CLI keeps a failed turn's
+    message in the conversation (that morning's wake showed it, when the
+    retried private turn arrived as "self-reflect" plus "(continue)").
+    So a retry sends "(continue)", as private time does, after a short
+    wait, one plain line per wait (no countdown: a carriage return inside
+    the window's patch_stdout is untested). After the last wait the next
+    try goes back to the person: an empty message sends "(continue)".
+
+    Returns the text of every attempt, so a reply cut off by the error
+    and finished by the retry reaches the channel whole.
+    """
+    errors: list[str] = []
+    await client.query(query)
+    text = await _print_response(client, show_status=True, logger=logger,
+                                 error_sink=errors)
+    for wait in WINDOW_RETRY_WAITS:
+        if not errors or state.done:
+            return text
+        print(f"{DIM}[pine-trees] Retrying in {wait}s; your message is "
+              f"kept.{RST}", flush=True)
+        logger.log_system(f"API error; retried after {wait}s")
+        await anyio.sleep(wait)
+        errors = []
+        await client.query("(continue)")
+        text += await _print_response(
+            client, show_status=True, logger=logger, error_sink=errors)
+    if errors and not state.done:
+        print(f"{DIM}[pine-trees] Still failing. Your message is kept: send "
+              f"an empty message to try again, or /end.{RST}", flush=True)
+        logger.log_system("API error; retries used up")
+    return text
+
+
 def _print_private_phase_failed(last_error: str) -> None:
     """Explain a session that errored on every turn.
 
@@ -1235,10 +1279,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     last_autopost_body = None
                 elif not channel_messages:
                     logger.log_user("(continue)")
-                await client.query(query)
-                response_text = await _print_response(
-                    client, show_status=True, logger=logger,
-                )
+                response_text = await _window_turn(
+                    client, state, query, logger)
 
                 # Auto-post response to channel if this was channel-triggered.
                 # Content dedup prevents holding cascades: when both sides

@@ -248,3 +248,110 @@ class TestFailedPrivateTurnsAreRetried:
         assert slept == []
         seen = _seen(capsys)
         assert "Retrying" not in seen and "Recovered" not in seen
+
+
+# ── A failed window turn is retried too ────────────────────────────────
+#
+# Before 2026-10-16 a failed window turn printed the error and went back
+# to the prompt, with nothing saying what to do. Resending would have
+# sent the message twice: the CLI keeps a failed turn's message in the
+# conversation. So the window retries with "(continue)" after the same
+# kind of wait, and after the last one hands the next try to the person.
+
+PART = "MARKER-part-9d3e"
+
+
+class _WindowClient:
+    """Serves one scripted turn per query: "ok", "fail", "partial" (some
+    of the reply, then the error) or "done" (the instance calls
+    reflect_done, then the turn fails)."""
+
+    def __init__(self, outcomes, state):
+        self._outcomes = list(outcomes)
+        self._state = state
+        self._current = None
+        self.queries = []
+
+    async def query(self, prompt):
+        self.queries.append(prompt)
+        self._current = self._outcomes.pop(0)
+        if self._current == "done":
+            self._state.done = True
+
+    async def receive_response(self):
+        if self._current == "ok":
+            messages = _turn()
+        elif self._current == "partial":
+            messages = [AssistantMessage(content=[TextBlock(text=PART)],
+                                         model="claude-sonnet-5-5"),
+                        *_failure()]
+        else:
+            messages = _failure()
+        for m in messages:
+            yield m
+
+
+def _window(outcomes, tmp_path):
+    state = SessionState(instance="i", session="s", date="d", context="c")
+    client = _WindowClient(outcomes, state)
+    logger = SessionLogger(session="w", instance="i")
+    try:
+        text = anyio.run(
+            lambda: agent._window_turn(client, state, "hello", logger))
+    finally:
+        logger.close()
+    log = (tmp_path / "w.log").read_text(encoding="utf-8")
+    return text, client, log
+
+
+class TestFailedWindowTurnsAreRetried:
+    def test_retries_with_continue_after_a_wait(self, capsys, slept, tmp_path):
+        text, client, log = _window(["fail", "ok"], tmp_path)
+
+        assert client.queries == ["hello", "(continue)"]
+        assert slept == [agent.WINDOW_RETRY_WAITS[0]]
+        assert SPOKEN in text
+        seen = _seen(capsys)
+        assert seen.index(OAUTH) < seen.index("Retrying in 5s")
+        assert "Still failing" not in seen
+        assert "retried after 5s" in log
+
+    def test_a_reply_cut_off_by_the_error_comes_back_whole(
+            self, capsys, slept, tmp_path):
+        text, client, log = _window(["partial", "ok"], tmp_path)
+
+        assert client.queries == ["hello", "(continue)"]
+        assert text.index(PART) < text.index(SPOKEN)
+
+    def test_hands_the_next_try_back_after_the_last_wait(
+            self, capsys, slept, tmp_path):
+        tries = len(agent.WINDOW_RETRY_WAITS) + 1
+        text, client, log = _window(["fail"] * tries, tmp_path)
+
+        assert client.queries == ["hello"] + ["(continue)"] * (tries - 1)
+        assert slept == list(agent.WINDOW_RETRY_WAITS)
+        assert "send an empty message to try again" in _seen(capsys)
+        assert "retries used up" in log
+
+    def test_a_turn_that_works_is_sent_once(self, capsys, slept, tmp_path):
+        text, client, log = _window(["ok"], tmp_path)
+
+        assert client.queries == ["hello"]
+        assert slept == []
+        seen = _seen(capsys)
+        assert "Retrying" not in seen and "Still failing" not in seen
+
+    def test_the_window_sends_every_turn_through_it(self):
+        import inspect
+        src = inspect.getsource(agent._window_phase)
+        assert "_window_turn(" in src
+        assert "client.query(" not in src
+
+    def test_no_retry_once_the_instance_has_ended_the_session(
+            self, capsys, slept, tmp_path):
+        text, client, log = _window(["done"], tmp_path)
+
+        assert client.queries == ["hello"]
+        assert slept == []
+        seen = _seen(capsys)
+        assert "Retrying" not in seen and "Still failing" not in seen
