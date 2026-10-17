@@ -12,6 +12,15 @@ from datetime import datetime
 from . import config
 
 
+def _stamp() -> str:
+    """Local time with its UTC offset, e.g. 2026-10-17T15:04:50+02:00.
+
+    The tape gives times in UTC; these lines used to be local time with
+    no zone, and s23 read a 2 h 25 min gap as 25 minutes.
+    """
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 class SessionLogger:
     """Logs the window-phase conversation to a dated text file."""
 
@@ -27,13 +36,13 @@ class SessionLogger:
         self._file = open(self.path, "a", encoding="utf-8")
         if resumed:
             self._write("")
-            self._write(f"# Resumed: {datetime.now().isoformat()}")
+            self._write(f"# Resumed: {_stamp()}")
         else:
             self._write(f"# Pine Trees session: {session}")
             self._write(f"# Instance: {instance}")
             if number:
                 self._write(f"# Number: s{number}")
-            self._write(f"# Started: {datetime.now().isoformat()}")
+            self._write(f"# Started: {_stamp()}")
         # What the harness asked for, not necessarily what ran: the CLI
         # may downgrade for the model. See config.describe_effort.
         if effort:
@@ -72,5 +81,5 @@ class SessionLogger:
 
     def close(self) -> None:
         self._write("")
-        self._write(f"# Ended: {datetime.now().isoformat()}")
+        self._write(f"# Ended: {_stamp()}")
         self._file.close()

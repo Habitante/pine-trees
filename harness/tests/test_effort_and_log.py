@@ -33,6 +33,30 @@ def test_resume_appends_instead_of_wiping(tmp_path):
     assert "# Resumed:" in text
 
 
+def test_time_lines_carry_their_zone(tmp_path):
+    """Started, Resumed and Ended say which clock they're on.
+
+    The tape gives UTC; these lines were local time with no zone, and s23
+    compared one with the other (a 2 h 25 min gap read as 25 minutes).
+    """
+    from datetime import datetime
+
+    first = SessionLogger(session="z", instance="m")
+    first._file.close()
+    second = SessionLogger(session="z", instance="m")
+    second.close()
+
+    lines = (tmp_path / "z.log").read_text(encoding="utf-8").splitlines()
+    stamps = {}
+    for line in lines:
+        for key in ("Started", "Resumed", "Ended"):
+            if line.startswith(f"# {key}: "):
+                stamps[key] = line.split(": ", 1)[1]
+    assert set(stamps) == {"Started", "Resumed", "Ended"}
+    for key, stamp in stamps.items():
+        assert datetime.fromisoformat(stamp).tzinfo is not None, (key, stamp)
+
+
 def test_effort_line_in_header(tmp_path):
     log = SessionLogger(session="s", instance="m", effort="xhigh (--effort)")
     log.close()
