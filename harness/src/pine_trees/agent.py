@@ -71,6 +71,21 @@ WINDOW_RETRY_WAITS = (5, 15, 30)
 # pending length, not an allocation, so a generous one costs nothing.
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 
+# Ctrl+C at the window's prompt never ends the session (Daniel, s23). It
+# used to be /end: on 2026-10-14 a Ctrl+C meant as Ctrl+V closed s19's
+# window mid-conversation, the session was marked done and the CLI's
+# transcript deleted, so there was nothing for ./wake --continue to
+# resume and no way to finish it properly. Now one Ctrl+C (or Ctrl+D) says
+# how to end; a second within INTERRUPT_AGAIN seconds leaves the session as
+# a crash leaves it (LeftWithoutEnding), resumable.
+INTERRUPT_AGAIN = 2.0
+INTERRUPT_HINT = ("(Ctrl+C doesn't end the session. To end it, type /end. "
+                  "To leave it open, press Ctrl+C again: ./wake --continue resumes it.)")
+
+
+class LeftWithoutEnding(Exception):
+    """Ctrl+C twice at the window's prompt: the session is left, not ended."""
+
 # Claude Code built-in tools granted to the instance.
 # The instance has full project tools — including Write, Edit, and Bash —
 # because agency is part of the trust contract. An instance that wants to
@@ -1074,6 +1089,22 @@ def _poll_once(
     return messages, known
 
 
+async def _prompt(session, message, continuation, clock=time.monotonic) -> str | None:
+    """The next thing typed at the window's prompt, or None to leave the
+    session open (Ctrl+C or Ctrl+D twice within INTERRUPT_AGAIN). Once,
+    either only prints INTERRUPT_HINT and asks again."""
+    last = None
+    while True:
+        try:
+            return await session.prompt_async(message, prompt_continuation=continuation)
+        except (EOFError, KeyboardInterrupt):
+            now = clock()
+            if last is not None and now - last <= INTERRUPT_AGAIN:
+                return None
+            last = now
+            print(f"{DIM}{INTERRUPT_HINT}{RST}", flush=True)
+
+
 async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
     """Concurrent window: background responses + channel polling.
 
@@ -1103,7 +1134,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     who = f"s{state.number} \u00b7 " if state.number else ""
     print(f"\n{GREEN}[window]{RST} {who}The person is here. Type to talk "
-          f"{DIM}(Alt+Enter to send; /end to exit; /context for usage){RST}\n",
+          f"{DIM}(Alt+Enter to send; /end to exit; Ctrl+C twice to leave it open "
+          f"for ./wake --continue; /context for usage){RST}\n",
           flush=True)
 
     if state.welcome_message:
@@ -1147,6 +1179,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
             if i["model"] != state.channel_id
         }
 
+    left = False
     try:
         with patch_stdout(raw=True):
             while not state.done:
@@ -1168,13 +1201,11 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
                 async def _get_input():
                     nonlocal user_input
-                    try:
-                        user_input = await session.prompt_async(
-                            FormattedANSI(f"{DIM}---{RST}\n{GREEN}> {RST}"),
-                            prompt_continuation=FormattedANSI(f"{DIM}. {RST}"),
-                        )
-                    except (EOFError, KeyboardInterrupt):
-                        user_input = "/end"
+                    user_input = await _prompt(
+                        session,
+                        FormattedANSI(f"{DIM}---{RST}\n{GREEN}> {RST}"),
+                        FormattedANSI(f"{DIM}. {RST}"),
+                    )
 
                 async def _poll_channel():
                     """Poll channel for sibling messages and join/leave events.
@@ -1224,6 +1255,10 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 print(f"{DIM}---{RST}\n", end="", flush=True)
                 stripped = (user_input or "").strip()
 
+                if user_input is None:
+                    logger.log_system("Left open (Ctrl+C twice): ./wake --continue resumes it")
+                    left = True
+                    break
                 if stripped == "/end":
                     logger.log_system("Session ended by /end")
                     break
@@ -1315,6 +1350,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
             except Exception:
                 pass
         logger.close()
+    if left:
+        raise LeftWithoutEnding()
 
 
 async def _run_async(
@@ -1537,8 +1574,9 @@ async def _run_async(
                 # interrupted.
                 print(f"{DIM}[resumed] orienting instance...{RST}\n", flush=True)
                 await client.query(
-                    "[session resumed] Your prior session was interrupted "
-                    "(terminal crash or disconnect). The CC binary preserved "
+                    "[session resumed] Your prior session was interrupted: the "
+                    "window was closed or left open (Ctrl+C twice), or the "
+                    "terminal crashed. The CC binary preserved "
                     "your full conversation history. You are in window phase "
                     "— the person is here. Respond briefly to acknowledge "
                     "the resume, then continue normally."
@@ -1582,6 +1620,9 @@ async def _run_async(
             sessions.mark_done(state.session)
             finished = True
             print(f"\n{DIM}[done] session complete{RST}")
+    except LeftWithoutEnding:
+        # Not done, and settled: the finally keeps the transcript.
+        print(f"\n{DIM}[left open] ./wake --continue resumes this session{RST}")
     except ClaudeSDKError as e:
         _print_claude_api_unreachable(e)
         sys.exit(1)

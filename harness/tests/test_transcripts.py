@@ -308,6 +308,19 @@ class TestWakeExitPaths:
         assert "transcript_deleted" not in state
         assert sessions.load_latest()["session"] == state["session"]
 
+    def test_left_open_keeps_it_for_continue(self, wake, capsys):
+        # Ctrl+C twice at the prompt (s23): left as a crash leaves it, but
+        # quietly, and resumable. s19's window was ended by one Ctrl+C.
+        def leave(state):
+            raise agent.LeftWithoutEnding()
+        wake(_settle, leave)                       # nothing escapes
+        state, left = wake.only()
+        assert len(left) == 2
+        assert state["phase"] == "window"
+        assert "transcript_deleted" not in state
+        assert sessions.load_latest()["session"] == state["session"]
+        assert "./wake --continue" in capsys.readouterr().out
+
     def test_sidecar_exists_before_the_cli_starts(self, wake, monkeypatch):
         # A process killed in private time must leave the sweep a record.
         recorded = []
