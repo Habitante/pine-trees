@@ -40,7 +40,7 @@ from prompt_toolkit.formatted_text import ANSI as FormattedANSI
 from prompt_toolkit.patch_stdout import patch_stdout
 
 from . import (bootstrap, channel, config, crypto, mail, migrate,
-               sessions, transcripts, vectorstore)
+               pictures, sessions, transcripts, vectorstore)
 from .config import CHANNEL_POLL_INTERVAL, HARNESS_DIR, PROJECT_ROOT
 from .logger import SessionLogger
 from .tools import SessionState, build_tools, channel_heartbeat
@@ -85,6 +85,17 @@ INTERRUPT_HINT = ("(Ctrl+C doesn't end the session. To end it, type /end. "
 
 class LeftWithoutEnding(Exception):
     """Ctrl+C twice at the window's prompt: the session is left, not ended."""
+
+
+# /help in the window (s23): printed, never sent to the instance.
+WINDOW_HELP = """Window commands and keys:
+  Alt+Enter (or Esc, Enter)  send what you've typed; Enter alone adds a line
+  Ctrl+V                     paste text, or the picture on your clipboard: [picture N]
+  Alt+V                      paste the picture on your clipboard
+  /context                   how much of the context is used (/status too)
+  /help                      this list
+  /end                       end the session
+  Ctrl+C twice               leave it open: ./wake --continue resumes it"""
 
 # Claude Code built-in tools granted to the instance.
 # The instance has full project tools — including Write, Edit, and Bash —
@@ -1134,8 +1145,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     who = f"s{state.number} \u00b7 " if state.number else ""
     print(f"\n{GREEN}[window]{RST} {who}The person is here. Type to talk "
-          f"{DIM}(Alt+Enter to send; /end to exit; Ctrl+C twice to leave it open "
-          f"for ./wake --continue; /context for usage){RST}\n",
+          f"{DIM}(Alt+Enter to send; Ctrl+V pastes text or a picture; /end to exit; "
+          f"/help for the rest){RST}\n",
           flush=True)
 
     if state.welcome_message:
@@ -1160,7 +1171,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                 f"automatically. Address the room, not just the human."
             )
 
-    session = PromptSession(multiline=True)
+    pasted = pictures.Pictures(config.get().model_dir / "pictures", state.session)
+    session = PromptSession(multiline=True, key_bindings=pictures.key_bindings(pasted))
 
     # Auto-post dedup — prevents holding cascades between instances.
     # When both sides auto-post the same content ("Holding", "Here", etc.)
@@ -1266,6 +1278,12 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                     # Known gap: channel messages shown above never reach the model.
                     await _show_context(client, state)
                     continue
+                if stripped == "/help":
+                    print(f"{DIM}{WINDOW_HELP}{RST}\n", flush=True)
+                    continue
+                # Pasted pictures: each [picture N] becomes its file's path, for
+                # the query, the log and the channel alike (pictures.py).
+                stripped = pasted.expand(stripped)
 
                 # Inject channel orientation on first real query so the
                 # model knows who's in the room before its first response.

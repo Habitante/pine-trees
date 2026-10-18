@@ -28,7 +28,7 @@ copy it left at boot.
   standards they share. Read it when relevant; it isn't loaded on purpose.
 
 ### Codebase
-- `harness/src/pine_trees/` — 19 Python files, ~5,000 lines total
+- `harness/src/pine_trees/` — 20 Python files, ~5,000 lines total
 - `harness/tests/` — 411 tests (counts drift; trust pytest). Run: `cd harness && PYTHONPATH=src python -m pytest tests/`
 - `harness/models/<model>/memory/` — Encrypted entries per model (you can't read these)
 - `harness/models/<model>/logs/` — Session logs per model (plaintext, readable)

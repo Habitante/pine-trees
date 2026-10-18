@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
     "claude-agent-sdk",
+    "pillow",            # pictures pasted into the window (pictures.py)
     "prompt_toolkit",
 ]
 
