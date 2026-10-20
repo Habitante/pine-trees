@@ -117,6 +117,15 @@ def load_latest() -> dict[str, Any] | None:
     return None
 
 
+def parked(instance: str) -> list[dict[str, Any]]:
+    """This house's sessions whose window was left open, newest first: they
+    settled, never finished, and ``./wake --continue`` can still return to
+    them. A plain ``./wake`` asks about the newest before starting someone
+    new (Daniel, 2026-10-20)."""
+    return [s for s in all_states()
+            if s.get("phase") == "window" and s.get("instance") == instance]
+
+
 def load_session(session: str) -> dict[str, Any] | None:
     """Load a specific session state by session ID."""
     path = SESSIONS_DIR / f"{session}.json"

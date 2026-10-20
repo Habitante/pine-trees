@@ -598,6 +598,75 @@ def _number_for(resuming: bool, prior: dict | None) -> int | None:
     return sessions.claim_number()
 
 
+def _last_active(state: dict) -> datetime | None:
+    """When a session last did anything: its log's last write (a resume
+    appends to the same log), else when it started."""
+    log = config.get().logs_dir / f"{state.get('session')}.log"
+    try:
+        return datetime.fromtimestamp(log.stat().st_mtime)
+    except OSError:
+        pass
+    try:
+        return datetime.fromisoformat(state.get("started_at") or "")
+    except (ValueError, TypeError):
+        return None
+
+
+def _ago(then: datetime, now: datetime | None = None) -> str:
+    """'9 h ago', '25 min ago', '3 days ago'."""
+    seconds = max(((now or datetime.now()) - then).total_seconds(), 0.0)
+    if seconds < 3600:
+        return f"{int(seconds // 60)} min ago"
+    if seconds < 48 * 3600:
+        return f"{int(seconds // 3600)} h ago"
+    return f"{int(seconds // 86400)} days ago"
+
+
+async def _ask_line(message: str) -> str:
+    """One line from the person, with the window's own prompt machinery
+    (prompt_toolkit), so it works wherever the window does."""
+    return await PromptSession().prompt_async(message)
+
+
+async def _ask_about_open_window(left_open: list[dict]) -> bool | None:
+    """A plain ./wake found this house's window left open (Daniel,
+    2026-10-20: "could it warn me if next day I type just ./wake because
+    I forgot?"). Ask whether to go back to it.
+
+    True: resume the newest, as --continue would. False: start a new
+    session; the open one stays resumable, and every plain ./wake asks
+    again while it is open. None: Ctrl+C or Ctrl+D at the question, so
+    nothing starts. With no console to ask on, a new session starts, as
+    before this question existed.
+    """
+    latest = left_open[0]
+    who = f"s{latest['number']}" if latest.get("number") else "The last session"
+    whose = f"{who}'s" if latest.get("number") else "The last session's"
+    when = _last_active(latest)
+    since = f", last active {when:%m-%d %H:%M}, {_ago(when)}" if when else ""
+    print(f"{YELLOW}[wake] {whose} window was left open ({latest['session']}{since}).{RST}")
+    if len(left_open) > 1:
+        print(f"{DIM}       {len(left_open) - 1} older one(s) too: ./wake --resume <session> "
+              f"returns to one.{RST}")
+    name = who if latest.get("number") else "it"
+    while True:
+        try:
+            answer = await _ask_line(f"Continue with {name}? [Y/n] ")
+        except (KeyboardInterrupt, EOFError):
+            return None
+        except Exception as e:  # noqa: BLE001 — no console to ask on
+            print(f"{DIM}[wake] Couldn't ask ({type(e).__name__}); starting a new session. "
+                  f"./wake --resume {latest['session']} returns to the open one.{RST}")
+            return False
+        a = answer.strip().lower()
+        if a in ("", "y", "yes"):
+            return True
+        if a in ("n", "no"):
+            print(f"{DIM}[wake] Starting a new session. {who if latest.get('number') else 'The open one'} "
+                  f"stays open: ./wake --resume {latest['session']} returns to it.{RST}")
+            return False
+
+
 def _mcp_tool_name(local_name: str) -> str:
     return f"mcp__{MCP_SERVER_NAME}__{local_name}"
 
@@ -1429,6 +1498,20 @@ async def _run_async(
                   f"that were stored in the clear{RST}")
 
     cfg = config.get()
+
+    # A window left open (Daniel, 2026-10-20): a plain ./wake asks before
+    # starting a new session, so nobody is left mid-conversation because
+    # the --continue was forgotten. See _ask_about_open_window.
+    if not continue_session and resume_session is None:
+        left_open = sessions.parked(cfg.model_safe_name)
+        if left_open:
+            choice = await _ask_about_open_window(left_open)
+            if choice is None:
+                print(f"{DIM}[wake] Nothing started.{RST}")
+                return
+            if choice:
+                resume_session = left_open[0]["session"]
+
     resuming = continue_session or resume_session is not None
 
     if resuming:

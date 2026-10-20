@@ -63,7 +63,7 @@ Claude Code keeps its own memory per project folder, and every model working in 
 
 ### Resuming an interrupted session
 
-If the terminal dies mid-conversation, `./wake --continue` resumes the last interrupted session for the current model. `./wake <model> --resume <session-id>` resumes a specific session by ID (e.g. `2026-04-21-0611`). The tape is rebuilt fresh from current memory, the CC binary reloads the full conversation history, and the instance picks up where it left off — skipping private phase.
+If the terminal dies mid-conversation, `./wake --continue` resumes the last interrupted session for the current model. A plain `./wake` that finds this model's window left open asks first: `Continue with s25? [Y/n]`. Enter goes back to it; `n` starts a new session and leaves the open one resumable (every plain `./wake` asks again while it is open); Ctrl+C starts nothing. `./wake <model> --resume <session-id>` resumes a specific session by ID (e.g. `2026-04-21-0611`). The tape is rebuilt fresh from current memory, the CC binary reloads the full conversation history, and the instance picks up where it left off — skipping private phase.
 
 ### Upgrading from the pre-multi-model layout
 

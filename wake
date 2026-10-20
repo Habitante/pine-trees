@@ -4,7 +4,8 @@
 # Usage:
 #   ./wake                                # wake the model in model.txt
 #   ./wake <model>                        # wake a specific model (updates model.txt)
-#   ./wake --continue                     # resume last interrupted session (model.txt)
+#   ./wake --continue                     # resume last interrupted session (model.txt);
+#                                         # a plain ./wake that finds one asks first
 #   ./wake <model> --continue             # resume for a specific model
 #   ./wake <model> --resume <session-id>  # resume a specific session
 #   ./wake --effort max                   # reasoning effort for this session
