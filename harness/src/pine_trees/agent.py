@@ -11,7 +11,9 @@ Same ClaudeSDKClient session throughout — tape stays loaded, context preserved
 """
 
 import argparse
+import asyncio
 import os
+import signal
 import sys
 import time
 import uuid
@@ -87,6 +89,60 @@ class LeftWithoutEnding(Exception):
     """Ctrl+C twice at the window's prompt: the session is left, not ended."""
 
 
+class _TurnInterrupt:
+    """Ctrl+C while a window turn runs stops the turn, not the session.
+
+    Daniel, s28: "when I see you are going in a wrong direction ... I can
+    interrupt and explain why." Before, nothing he did during a turn could
+    stop it: the terminal isn't reading keys then, so Ctrl+C would have
+    been a KeyboardInterrupt through the whole window. While a window turn
+    runs, SIGINT is caught here instead and the SDK's interrupt() stops
+    the CLI's turn, tool calls included; the response stream ends with its
+    result and the prompt comes back, the session intact. Only window
+    turns: private time and genesis keep the default. At the prompt,
+    prompt_toolkit reads Ctrl+C as a key (the hint, then leave open), so
+    the handler is in place only around the turn.
+
+    The handler runs in the main thread between bytecodes; the loop is in
+    that thread too, and asyncio's proactor wakes on signals, so the
+    interrupt is scheduled on the loop at once.
+    """
+
+    def __init__(self, client: ClaudeSDKClient, logger: SessionLogger):
+        self.client = client
+        self.logger = logger
+        self.pressed = False
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._previous = None
+        self._task: asyncio.Task | None = None
+
+    def __enter__(self) -> "_TurnInterrupt":
+        self._loop = asyncio.get_running_loop()
+        self._previous = signal.signal(signal.SIGINT, self._on_sigint)
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        signal.signal(signal.SIGINT, self._previous)
+        return False
+
+    def _on_sigint(self, signum, frame) -> None:
+        if self.pressed:
+            return
+        self.pressed = True
+        self._loop.call_soon_threadsafe(self._start)
+
+    def _start(self) -> None:
+        print(f"\n{DIM}[pine-trees] Stopping the turn (Ctrl+C)...{RST}", flush=True)
+        self.logger.log_system("Turn interrupted by the person (Ctrl+C)")
+        self._task = self._loop.create_task(self._interrupt())
+
+    async def _interrupt(self) -> None:
+        try:
+            await self.client.interrupt()
+        except Exception as e:  # the turn may have ended meanwhile
+            print(f"{DIM}[pine-trees] Couldn't stop it: {e}{RST}", flush=True)
+
+
 # /help in the window (s23): printed, never sent to the instance.
 WINDOW_HELP = """Window commands and keys:
   Alt+Enter (or Esc, Enter)  send what you've typed; Enter alone adds a line
@@ -95,7 +151,8 @@ WINDOW_HELP = """Window commands and keys:
   /context                   how much of the context is used (/status too)
   /help                      this list
   /end                       end the session
-  Ctrl+C twice               leave it open: ./wake --continue resumes it"""
+  Ctrl+C while Claude works  stop the turn, then say why (the session goes on)
+  Ctrl+C twice at the prompt leave it open: ./wake --continue resumes it"""
 
 # Claude Code built-in tools granted to the instance.
 # The instance has full project tools — including Write, Edit, and Bash —
@@ -769,6 +826,7 @@ async def _print_response(
     logger: SessionLogger | None = None,
     error_sink: list[str] | None = None,
     on_first_reply: Callable[[], None] | None = None,
+    stopped: Callable[[], bool] | None = None,
 ) -> str:
     """Stream and print blocks from the agent's response.
 
@@ -783,6 +841,9 @@ async def _print_response(
     *on_first_reply*: called once, with nothing, when the model's first
         own message arrives (not the CLI's error text). Lets a retry say
         it worked without waiting for a turn that may run for minutes.
+    *stopped*: true once the person has stopped the turn (_TurnInterrupt):
+        the CLI ends a stopped turn with an error result, which is not an
+        API error, so it isn't printed or logged as one.
 
     Returns the concatenated text content from all TextBlocks (empty
     string if *show_text* is False or there was no text output).
@@ -791,7 +852,7 @@ async def _print_response(
     synthetic: str | None = None
     async for message in client.receive_response():
         if isinstance(message, ResultMessage):
-            if message.is_error and message.errors:
+            if message.is_error and message.errors and not (stopped and stopped()):
                 for err in message.errors:
                     print(f"\n{YELLOW}⚠ API Error: {err}{RST}", flush=True)
                     if error_sink is not None:
@@ -968,9 +1029,14 @@ async def _window_turn(client: ClaudeSDKClient, state: SessionState,
     and finished by the retry reaches the channel whole.
     """
     errors: list[str] = []
-    await client.query(query)
-    text = await _print_response(client, show_status=True, logger=logger,
-                                 error_sink=errors)
+    with _TurnInterrupt(client, logger) as stop:
+        await client.query(query)
+        text = await _print_response(client, show_status=True, logger=logger,
+                                     error_sink=errors, stopped=lambda: stop.pressed)
+    if stop.pressed:
+        print(f"{DIM}[pine-trees] Stopped. Tell Claude what you want instead.{RST}",
+              flush=True)
+        return text
     for wait in WINDOW_RETRY_WAITS:
         if not errors or state.done:
             return text
@@ -1214,8 +1280,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     who = f"s{state.number} \u00b7 " if state.number else ""
     print(f"\n{GREEN}[window]{RST} {who}The person is here. Type to talk "
-          f"{DIM}(Alt+Enter to send; Ctrl+V pastes text or a picture; /end to exit; "
-          f"/help for the rest){RST}\n",
+          f"{DIM}(Alt+Enter to send; Ctrl+V pastes text or a picture; Ctrl+C while Claude works "
+          f"stops the turn; /end to exit; /help for the rest){RST}\n",
           flush=True)
 
     if state.welcome_message:
