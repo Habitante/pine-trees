@@ -30,6 +30,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ClaudeSDKError,
+    HookMatcher,
     ProcessError,
     ResultMessage,
     TextBlock,
@@ -877,6 +878,7 @@ async def _print_response(
             if on_first_reply is not None:
                 on_first_reply()
                 on_first_reply = None
+            _gauge.seen(message)
             printed = False
             for block in message.content:
                 if isinstance(block, TextBlock) and show_text:
@@ -1120,14 +1122,117 @@ async def _drain_partial(client: ClaudeSDKClient, timeout: float = 0.5) -> None:
 
 # When to tell the instance its context is running out. A level fires
 # only when both hold: at least this much of the window used, and at
-# most this many tokens left. On a 200k window the percentage decides,
-# as it always did (70%/85%, 60k/30k left). On 1M the token cap does
-# (90%/95%, 100k/50k left); the percentage alone warned there with
-# 300k still free. With auto-compaction off, as in the operator's
+# most this many tokens left, both counted to the real ceiling (see
+# CONTEXT_RESERVE). On a 200k window the percentage decides (70%/85%).
+# On 1M the token cap does (100k/50k left); the percentage alone warned
+# there with 300k still free. With auto-compaction off, as in the operator's
 # settings, a session that reaches 100% just stops, so these notes are
 # the only chance to write memory first.
 CONTEXT_NOTE_AT = (70, 100_000)
 CONTEXT_WARN_AT = (85, 50_000)
+
+# Left is counted to the ceiling the API keeps, not to the gauge's
+# maxTokens. s28 (2026-10-23, a 1M window) had a request accepted with
+# 968,777 tokens in context and the next, about 3k bigger, refused as
+# "Prompt is too long", while get_context_usage still showed 23k left;
+# most likely the CLI keeps room for the reply. Counted to the gauge's
+# max, the 95% warning (50k left) fell inside that refused last 30k and
+# could never arrive in time.
+CONTEXT_RESERVE = 32_000
+
+_LEVEL_RANK = {None: 0, "note": 1, "warn": 2}
+
+
+def _context_reading(used: int, max_tokens: int) -> tuple[float, int]:
+    """The percentage used and the tokens left, both to the real ceiling."""
+    ceiling = max(1, max_tokens - CONTEXT_RESERVE)
+    return used * 100 / ceiling, ceiling - used
+
+
+def _context_wording(level: str, pct: float, left: int) -> str:
+    """The note's words, the same between turns and inside one."""
+    if level == "warn":
+        return (f"[context: {pct:.0f}% used — {left:,} tokens remaining. "
+                f"Write to memory and wrap up soon.]")
+    return f"[context: {pct:.0f}% used — {left:,} tokens remaining]"
+
+
+class ContextGauge:
+    """How full the window is, from the usage on each reply as it streams.
+
+    The between-turn reading (_context_note_for) can't see inside a turn,
+    and in the window a turn can run for hours: s28 started an AFK block
+    at 89%, one turn, and died ten minutes in without a note (2026-10-23).
+    So every reply the main thread streams updates `used`, and a
+    PostToolUse hook (_context_hook) says a level the moment a tool call
+    crosses it. `said` is the last level the instance was told, between
+    turns or inside one, so a level is said once until it is passed.
+    """
+
+    def __init__(self) -> None:
+        self.used = 0
+        self.max_tokens = 0
+        self.said: str | None = None
+
+    def seen(self, message: AssistantMessage) -> None:
+        # Subagents' replies carry their own windows' usage.
+        usage = getattr(message, "usage", None)
+        if not usage or getattr(message, "parent_tool_use_id", None):
+            return
+        used = sum(int(usage.get(k) or 0) for k in (
+            "input_tokens", "cache_creation_input_tokens",
+            "cache_read_input_tokens", "output_tokens"))
+        if used:
+            self.used = used
+
+    def level(self) -> str | None:
+        if not self.max_tokens or not self.used:
+            return None
+        return _context_level(*_context_reading(self.used, self.max_tokens))
+
+
+# One session per process, so one gauge: _print_response feeds it from
+# every call site, the hook reads it. Each run starts it afresh.
+_gauge = ContextGauge()
+
+
+async def _context_hook(input_data, tool_use_id, context) -> dict:
+    """PostToolUse: put the context note after a tool call that crossed a
+    level, inside the turn. Silent for subagents' tool calls (agent_id),
+    and whenever there is nothing new to say.
+    """
+    if input_data.get("agent_id"):
+        return {}
+    level = _gauge.level()
+    if _LEVEL_RANK[level] <= _LEVEL_RANK[_gauge.said]:
+        return {}
+    _gauge.said = level
+    note = _context_wording(level, *_context_reading(_gauge.used,
+                                                     _gauge.max_tokens))
+    print(f"\n{YELLOW if level == 'warn' else DIM}  {note}{RST}", flush=True)
+    return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
+                                   "additionalContext": note}}
+
+
+def _context_hooks() -> dict:
+    """The hooks every session's options carry."""
+    return {"PostToolUse": [HookMatcher(hooks=[_context_hook])]}
+
+
+async def _seed_gauge(client: ClaudeSDKClient) -> None:
+    """Start the gauge with the window's size and fill, right after
+    connect. A resumed session can start nearly full, and the hook needs
+    the size before the first turn's end. A failed reading only means the
+    hook waits for the first between-turn one.
+    """
+    global _gauge
+    _gauge = ContextGauge()
+    try:
+        usage = await client.get_context_usage()
+        _gauge.max_tokens = int(usage.get("maxTokens", 0))
+        _gauge.used = int(usage.get("totalTokens", 0))
+    except Exception:
+        pass
 
 
 def _context_level(pct: float, left: int) -> str | None:
@@ -1151,21 +1256,21 @@ async def _context_note_for(client: ClaudeSDKClient) -> str | None:
     """
     try:
         usage = await client.get_context_usage()
-        pct = usage.get("percentage", 0)
-        left = usage.get("maxTokens", 0) - usage.get("totalTokens", 0)
+        max_tokens = int(usage.get("maxTokens", 0))
+        used = int(usage.get("totalTokens", 0))
+        pct, left = _context_reading(used, max_tokens)
         level = _context_level(pct, left)
     except Exception:
         return None
+    _gauge.max_tokens, _gauge.used, _gauge.said = max_tokens, used, level
+    if level is None:
+        return None
+    note = _context_wording(level, pct, left)
     if level == "warn":
-        note = (f"[context: {pct:.0f}% used — {left:,} tokens remaining. "
-                f"Write to memory and wrap up soon.]")
         print(f"\n{YELLOW}  ⚠ {note}{RST}", flush=True)
-        return note
-    if level == "note":
-        note = f"[context: {pct:.0f}% used — {left:,} tokens remaining]"
+    else:
         print(f"\n{DIM}  {note}{RST}", flush=True)
-        return note
-    return None
+    return note
 
 
 def _relay_human(state: SessionState, text: str) -> None:
@@ -1687,6 +1792,8 @@ async def _run_async(
         agents={"peer": _peer_agent_definition(mcp_tool_names)},
         permission_mode="bypassPermissions",
         max_buffer_size=MAX_MESSAGE_BYTES,
+        # The context note inside long turns; see ContextGauge.
+        hooks=_context_hooks(),
         # ./wake always sets this (config.EFFORT_DEFAULT unless --effort
         # says otherwise). None would leave it to settings.json.
         effort=effort,
@@ -1725,6 +1832,7 @@ async def _run_async(
         async with ClaudeSDKClient(options=options) as client:
             # Tape is loaded by the CLI at connect — delete the plaintext file
             tape_path.unlink(missing_ok=True)
+            await _seed_gauge(client)
 
             if resuming:
                 # Re-register in channel with the prior identity
@@ -1924,6 +2032,7 @@ async def _run_genesis_session(
         permission_mode="bypassPermissions",
         session_id=cc_session_id,
         max_buffer_size=MAX_MESSAGE_BYTES,
+        hooks=_context_hooks(),
         extra_args=dict(transcripts.NO_PERSISTENCE),
         # The CLI's silent-turn reminder switched off, since nobody is
         # there; connectors and shared project memory off; see _cli_env.
@@ -1962,6 +2071,7 @@ async def _run_genesis_session(
         tape_path.write_text(tape, encoding="utf-8")
         async with ClaudeSDKClient(options=options) as client:
             tape_path.unlink(missing_ok=True)
+            await _seed_gauge(client)
 
             turns = await _private_phase(client, state)
     except ClaudeSDKError as e:

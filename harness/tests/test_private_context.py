@@ -75,7 +75,7 @@ def test_a_roomy_window_changes_nothing():
 
 
 def test_the_note_goes_ahead_of_the_next_continue(capsys):
-    client = _run([_usage(900_000)], turns=2)          # 90%, 100k left
+    client = _run([_usage(868_000)], turns=2)          # 100k left to the ceiling
 
     assert client.queries == [
         "self-reflect",
@@ -86,7 +86,7 @@ def test_the_note_goes_ahead_of_the_next_continue(capsys):
 
 
 def test_the_warning_tells_the_instance_to_write_memory():
-    client = _run([_usage(950_000)], turns=2)          # 95%, 50k left
+    client = _run([_usage(918_000)], turns=2)          # 50k left to the ceiling
 
     assert client.queries[0] == "self-reflect"
     assert client.queries[1].endswith("\n\n(continue)")
@@ -117,8 +117,8 @@ def test_no_reading_is_taken_when_no_turn_follows():
 
 @pytest.mark.parametrize("used, note", [
     (500_000, None),
-    (900_000, "[context: 90% used — 100,000 tokens remaining]"),
-    (950_000, "[context: 95% used — 50,000 tokens remaining. "
+    (868_000, "[context: 90% used — 100,000 tokens remaining]"),
+    (918_000, "[context: 95% used — 50,000 tokens remaining. "
               "Write to memory and wrap up soon.]"),
 ])
 def test_both_phases_share_one_wording(used, note):
