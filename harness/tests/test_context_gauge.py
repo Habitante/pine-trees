@@ -77,3 +77,15 @@ def test_a_note_given_between_turns_is_not_repeated_inside_the_next():
     _fresh()
     assert anyio.run(lambda: agent._context_note_for(Client())) is not None
     assert _hook() == {}
+
+
+def test_a_gauge_that_never_answers_gives_no_note_and_doesnt_hang(monkeypatch):
+    # 26 October: after a Ctrl+C stop the CLI didn't answer get_context_usage, and the window hung for ever.
+    class Silent:
+        async def get_context_usage(self):
+            await anyio.sleep(3600)
+
+    monkeypatch.setattr(agent, "CONTEXT_READ_TIMEOUT", 0.05)
+    assert anyio.run(lambda: agent._context_note_for(Silent())) is None
+    anyio.run(lambda: agent._seed_gauge(Silent()))
+    assert agent._gauge.max_tokens == 0

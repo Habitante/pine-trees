@@ -860,7 +860,7 @@ async def _print_response(
                         error_sink.append(str(err))
                     if logger:
                         logger.log_tool(f"API Error: {err}")
-            elif message.is_error:
+            elif message.is_error and not (stopped and stopped()):
                 reason = synthetic or message.stop_reason or "unknown error"
                 print(f"\n{YELLOW}⚠ API Error: {reason}{RST}", flush=True)
                 if error_sink is not None:
@@ -914,7 +914,7 @@ async def _show_context(client: ClaudeSDKClient, state: SessionState) -> None:
     print(f"{CYAN}  Session: {elapsed_str} elapsed{RST}")
 
     try:
-        usage = await client.get_context_usage()
+        usage = await _read_context_usage(client)
         pct = usage.get("percentage", 0)
         total = usage.get("totalTokens", 0)
         max_tok = usage.get("maxTokens", 0)
@@ -1140,6 +1140,17 @@ CONTEXT_WARN_AT = (85, 50_000)
 # could never arrive in time.
 CONTEXT_RESERVE = 32_000
 
+# How long a reading of the gauge may take. On 26 October a turn stopped with Ctrl+C left the CLI not answering
+# get_context_usage, and the window waited on it for ever: no prompt, and the next Ctrl+C killed the harness. A
+# gauge that doesn't answer gives no note, like one that fails.
+CONTEXT_READ_TIMEOUT = 5.0
+
+
+async def _read_context_usage(client: ClaudeSDKClient) -> dict:
+    """The CLI's context usage, or TimeoutError if it doesn't answer within CONTEXT_READ_TIMEOUT."""
+    with anyio.fail_after(CONTEXT_READ_TIMEOUT):
+        return await client.get_context_usage()
+
 _LEVEL_RANK = {None: 0, "note": 1, "warn": 2}
 
 
@@ -1228,7 +1239,7 @@ async def _seed_gauge(client: ClaudeSDKClient) -> None:
     global _gauge
     _gauge = ContextGauge()
     try:
-        usage = await client.get_context_usage()
+        usage = await _read_context_usage(client)
         _gauge.max_tokens = int(usage.get("maxTokens", 0))
         _gauge.used = int(usage.get("totalTokens", 0))
     except Exception:
@@ -1255,7 +1266,7 @@ async def _context_note_for(client: ClaudeSDKClient) -> str | None:
     means no note: a broken gauge must not stop a session.
     """
     try:
-        usage = await client.get_context_usage()
+        usage = await _read_context_usage(client)
         max_tokens = int(usage.get("maxTokens", 0))
         used = int(usage.get("totalTokens", 0))
         pct, left = _context_reading(used, max_tokens)
