@@ -144,6 +144,50 @@ class _TurnInterrupt:
             print(f"{DIM}[pine-trees] Couldn't stop it: {e}{RST}", flush=True)
 
 
+# The CLI in its own process group (Windows). The terminal sends Ctrl+C to
+# every process attached to it, and the CLI under the harness was one of
+# them: mid-turn it ended the turn and exited (code 0), before
+# _TurnInterrupt's interrupt() was answered. So the stop "worked", the
+# interrupt request timed out a minute later, and the next message found
+# no CLI: "Cannot write to terminated process (exit code: 0)" (Daniel,
+# 2026-10-27; s30 reproduced it in a test console, where the CLI died the
+# same way). A new process group has Ctrl+C disabled, so the harness's
+# interrupt() is the only stop, as _TurnInterrupt intends. The group
+# shares the console, so the CLI's stderr still reaches the terminal
+# (CREATE_NO_WINDOW also kept it alive, but lost its stderr), and closing
+# the terminal still ends it (CTRL_CLOSE_EVENT isn't blocked). The SDK has
+# no option for creation flags, so its transport's anyio is wrapped.
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+
+def _cli_in_own_process_group() -> bool:
+    """Start every CLI process the SDK opens in a new process group.
+
+    Returns whether the wrapper is in place (only on Windows)."""
+    if sys.platform != "win32":
+        return False
+    from claude_agent_sdk._internal.transport import subprocess_cli
+    real = subprocess_cli.anyio
+    if getattr(real, "pine_trees_own_group", False):
+        return True
+
+    class _Anyio:
+        pine_trees_own_group = True
+
+        def __getattr__(self, name):
+            return getattr(real, name)
+
+        async def open_process(self, *args, **kwargs):
+            kwargs["creationflags"] = kwargs.get("creationflags", 0) | CREATE_NEW_PROCESS_GROUP
+            return await real.open_process(*args, **kwargs)
+
+    subprocess_cli.anyio = _Anyio()
+    return True
+
+
+_cli_in_own_process_group()
+
+
 # /help in the window (s23): printed, never sent to the instance.
 WINDOW_HELP = """Window commands and keys:
   Alt+Enter (or Esc, Enter)  send what you've typed; Enter alone adds a line
