@@ -197,7 +197,9 @@ WINDOW_HELP = """Window commands and keys:
   /help                      this list
   /end                       end the session
   Ctrl+C while Claude works  stop the turn, then say why (the session goes on)
-  Ctrl+C twice at the prompt leave it open: ./wake --continue resumes it"""
+  Ctrl+C twice at the prompt leave it open: ./wake --continue resumes it
+  (Ctrl+C keeps what you've typed, and it's saved as you type: a crash or a
+  closed terminal brings it back at the next prompt)"""
 
 # Claude Code built-in tools granted to the instance.
 # The instance has full project tools — including Write, Edit, and Bash —
@@ -1395,15 +1397,63 @@ def _poll_once(
     return messages, known
 
 
-async def _prompt(session, message, continuation, clock=time.monotonic) -> str | None:
+# What's typed at the window's prompt and not sent yet, in the model's folder
+# (ignored by git, as everything there). On 5 November a Ctrl+C at the prompt
+# threw away an hour of Daniel's typing: prompt_toolkit holds it only in its
+# buffer, a Ctrl+C discards it, and a long text is never in the terminal's
+# scrollback. Now every change is saved here (_keep_drafts), a Ctrl+C keeps the
+# text in the prompt, and the next prompt (after a crash, a closed terminal or
+# the session left open) starts with it. Sending clears it.
+DRAFT_FILE = "draft.md"
+DRAFT_BACK = "(What you had typed and not sent is back in the prompt.)"
+
+
+def _read_draft(path: Path | None) -> str:
+    try:
+        return path.read_text(encoding="utf-8") if path and path.exists() else ""
+    except OSError:
+        return ""
+
+
+def _write_draft(path: Path | None, text: str) -> None:
+    if path is None:
+        return
+    try:
+        if text.strip():
+            path.write_text(text, encoding="utf-8")
+        elif path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _keep_drafts(session, path: Path) -> None:
+    """Every change to what's typed goes to the draft file as it happens."""
+    session.default_buffer.on_text_changed += lambda buf: _write_draft(path, buf.text)
+
+
+def _typed(session) -> str:
+    """What's in the prompt now (after a Ctrl+C prompt_toolkit still has it, until the next prompt resets it)."""
+    return getattr(getattr(session, "default_buffer", None), "text", "") or ""
+
+
+async def _prompt(session, message, continuation, clock=time.monotonic, draft: Path | None = None) -> str | None:
     """The next thing typed at the window's prompt, or None to leave the
     session open (Ctrl+C or Ctrl+D twice within INTERRUPT_AGAIN). Once,
-    either only prints INTERRUPT_HINT and asks again."""
+    either only prints INTERRUPT_HINT and asks again, what you'd typed still
+    in the prompt. It starts with the draft's text, if any (DRAFT_FILE)."""
     last = None
+    kept = _read_draft(draft)
+    if kept.strip():
+        print(f"{DIM}{DRAFT_BACK}{RST}", flush=True)
     while True:
         try:
-            return await session.prompt_async(message, prompt_continuation=continuation)
+            text = await session.prompt_async(message, prompt_continuation=continuation, default=kept)
+            _write_draft(draft, "")
+            return text
         except (EOFError, KeyboardInterrupt):
+            kept = _typed(session) or kept
+            _write_draft(draft, kept)
             now = clock()
             if last is not None and now - last <= INTERRUPT_AGAIN:
                 return None
@@ -1468,6 +1518,8 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
 
     pasted = pictures.Pictures(config.get().model_dir / "pictures", state.session)
     session = PromptSession(multiline=True, key_bindings=pictures.key_bindings(pasted))
+    draft = config.get().model_dir / DRAFT_FILE
+    _keep_drafts(session, draft)
 
     # Auto-post dedup — prevents holding cascades between instances.
     # When both sides auto-post the same content ("Holding", "Here", etc.)
@@ -1512,6 +1564,7 @@ async def _window_phase(client: ClaudeSDKClient, state: SessionState) -> None:
                         session,
                         FormattedANSI(f"{DIM}---{RST}\n{GREEN}> {RST}"),
                         FormattedANSI(f"{DIM}. {RST}"),
+                        draft=draft,
                     )
 
                 async def _poll_channel():
